@@ -11,7 +11,7 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 
 # =========================
-# إعدادات المحل (عدّل هنا حسب رغبتك)
+# إعدادات المحل
 # =========================
 DB_NAME = "tailor_master.db"
 SHOP_NAME = "صادق الخياط"
@@ -28,7 +28,7 @@ STATUSES = [
 ]
 
 # =========================
-# تنسيق الصفحة الأساسي
+# تنسيق الصفحة
 # =========================
 st.set_page_config(
     page_title=f"{SHOP_NAME} - إدارة الطلبات",
@@ -38,7 +38,7 @@ st.set_page_config(
 )
 
 # =========================
-# كود CSS لتزيين الواجهة
+# CSS المخصص
 # =========================
 def apply_custom_css():
     st.markdown("""
@@ -126,13 +126,50 @@ def apply_custom_css():
             background: #2a5298;
             border-radius: 10px;
         }
-        /* تنسيق رسالة التحديث التلقائي */
-        .measurement-suggestion {
-            background-color: #e8f0fe;
-            border-right: 5px solid #f1c40f;
+        /* تنسيق بطاقات المؤشرات */
+        .metric-card {
+            background: white;
+            border-radius: 15px;
             padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .metric-card .label {
+            font-size: 16px;
+            color: #555;
+        }
+        .metric-card .value {
+            font-size: 28px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .metric-card .value.overdue { color: #e74c3c; }
+        .metric-card .value.soon { color: #f39c12; }
+        .metric-card .value.normal { color: #27ae60; }
+        /* تنسيق حالة الموعد في الجدول */
+        .badge-overdue {
+            background-color: #e74c3c;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .badge-soon {
+            background-color: #f39c12;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .badge-normal {
+            background-color: #27ae60;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -267,7 +304,7 @@ def init_db():
 init_db()
 
 # =========================
-# دوال البيانات الأساسية
+# دوال البيانات
 # =========================
 @st.cache_data(ttl=60)
 def get_customers():
@@ -288,7 +325,6 @@ def get_payments(order_id):
     return conn.execute("SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC", (order_id,)).fetchall()
 
 def get_last_order_by_customer(customer_id):
-    """جلب آخر طلب لزبون معين (لجلب قياساته الأخيرة)"""
     conn = db.get_connection()
     return conn.execute(
         "SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT 1",
@@ -550,7 +586,7 @@ def main():
     st.markdown("""
     <div style="background: linear-gradient(135deg, #1e3c72, #2a5298); padding: 25px; border-radius: 20px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 20px rgba(0,0,0,0.3);">
         <h1 style="color: white; font-size: 3.5em; margin: 0;">✂️ صادق الخياط</h1>
-        <p style="color: #f1c40f; font-size: 1.3em; margin-top: 5px;">نظام إدارة الطلبات والقياسات – مع اقتراح القياسات التلقائي</p>
+        <p style="color: #f1c40f; font-size: 1.3em; margin-top: 5px;">نظام إدارة الطلبات والقياسات – مع تنبيهات المواعيد</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -613,43 +649,27 @@ def main():
         show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي"]
         st.dataframe(show, use_container_width=True, hide_index=True)
     
-    # ----- 2. إضافة طلب (مع خاصية اقتراح القياسات) -----
+    # ----- 2. إضافة طلب (مع اقتراح القياسات) -----
     elif menu == "➕ إضافة طلب":
         st.subheader("➕ تسجيل طلب جديد")
-        
-        # جلب قائمة الزبائن
         customers_df = get_customers()
         customer_options = ["【زبون جديد】"]
-        customer_ids = {0: None}  # للتعرف على الخيارات
-        
+        customer_ids = {0: None}
         if not customers_df.empty:
             for idx, row in customers_df.iterrows():
                 display_name = f"{row['name']} - {row['phone'] or 'بدون هاتف'}"
                 customer_options.append(display_name)
-                customer_ids[len(customer_options)-1] = row['id']  # ربط العرض بمعرف الزبون
-        
-        # اختيار الزبون
+                customer_ids[len(customer_options)-1] = row['id']
         selected_option = st.selectbox(
             "👤 اختر زبوناً موجوداً (أو اختر 'زبون جديد')",
             customer_options,
             key="customer_selector"
         )
-        
-        # تحديد إذا كان زبون جديد أم موجود
         selected_index = customer_options.index(selected_option)
         customer_id = customer_ids.get(selected_index, None)
-        
-        # متغيرات لحفظ القياسات المقترحة
-        suggested_length = 0.0
-        suggested_width = 0.0
-        suggested_shoulder = 0.0
-        suggested_sleeve = 0.0
-        suggested_collar = 0.0
-        suggested_cuff = 0.0
+        suggested_length = suggested_width = suggested_shoulder = suggested_sleeve = suggested_collar = suggested_cuff = 0.0
         suggested_phone = ""
         suggested_name = ""
-        
-        # إذا كان الزبون موجوداً، جلب آخر قياساته
         if customer_id is not None:
             last_order = get_last_order_by_customer(customer_id)
             if last_order:
@@ -661,30 +681,20 @@ def main():
                 suggested_sleeve = float(last_order['sleeve'] or 0)
                 suggested_collar = float(last_order['collar'] or 0)
                 suggested_cuff = float(last_order['cuff'] or 0)
-                
-                # عرض رسالة تأكيد
                 st.success(f"✅ تم جلب قياسات {suggested_name} من آخر طلب له.")
                 st.info(f"📏 الطول: {suggested_length} | العرض: {suggested_width} | الكتاف: {suggested_shoulder} | يمكنك تعديلها قبل الحفظ.")
             else:
                 st.warning("⚠️ هذا الزبون مسجل لكن ليس لديه طلبات سابقة، أدخل القياسات يدوياً.")
-        
-        # نموذج الإضافة
         with st.form("new_order", clear_on_submit=True):
             st.markdown("### 👤 معلومات الزبون")
             col1, col2 = st.columns(2)
-            # إذا كان هناك اسم مقترح، ضعه في الحقل
-            name_value = suggested_name if suggested_name else ""
-            name = col1.text_input("اسم الزبون *", value=name_value, placeholder="أدخل اسم الزبون")
-            
-            phone_value = suggested_phone if suggested_phone else ""
-            phone = col2.text_input("رقم الهاتف", value=phone_value, placeholder="أدخل رقم الهاتف")
-            
+            name = col1.text_input("اسم الزبون *", value=suggested_name, placeholder="أدخل اسم الزبون")
+            phone = col2.text_input("رقم الهاتف", value=suggested_phone, placeholder="أدخل رقم الهاتف")
             st.markdown("### 📋 تفاصيل الطلب")
             col1, col2 = st.columns(2)
             item_type = col1.selectbox("نوع التفصيل", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "جاكيت", "تفصيل آخر"])
             delivery_date = col2.date_input("تاريخ التسليم المتوقع", value=date.today() + timedelta(days=7))
-            
-            st.markdown("### 📏 القياسات بالسنتيمتر (تم تعبئتها تلقائياً إن وجدت)")
+            st.markdown("### 📏 القياسات بالسنتيمتر")
             col1, col2, col3 = st.columns(3)
             length = col1.number_input("الطول", min_value=0.0, step=0.5, format="%.1f", value=suggested_length)
             width = col1.number_input("العرض", min_value=0.0, step=0.5, format="%.1f", value=suggested_width)
@@ -692,16 +702,12 @@ def main():
             sleeve = col2.number_input("طول الردان", min_value=0.0, step=0.5, format="%.1f", value=suggested_sleeve)
             collar = col3.number_input("الياخة", min_value=0.0, step=0.5, format="%.1f", value=suggested_collar)
             cuff = col3.number_input("البزمة", min_value=0.0, step=0.5, format="%.1f", value=suggested_cuff)
-            
             notes = st.text_area("📝 ملاحظات", placeholder="القماش، اللون، الموديل...")
-            
             st.markdown("### 💰 الحساب")
             col1, col2 = st.columns(2)
             total_price = col1.number_input("السعر الكلي (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
             advance_paid = col2.number_input("المبلغ المدفوع (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
-            
             submitted = st.form_submit_button("💾 حفظ الطلب", use_container_width=True, type="primary")
-            
             if submitted:
                 if not name.strip():
                     st.error("⚠️ يرجى إدخال اسم الزبون.")
@@ -730,40 +736,126 @@ def main():
                             st.success(f"✅ تم حفظ الطلب رقم #{order_id} بنجاح.")
                             st.info(f"💵 المبلغ المتبقي: {remaining:,.0f} د.ع")
                             st.balloons()
-                            # إعادة تعيين الـ selectbox بعد الحفظ (اختياري)
-                            # st.rerun() # يمكنك إلغاء التعليق إذا أردت إعادة تعيين النموذج
     
-    # ----- 3. إدارة الطلبات -----
+    # ----- 3. إدارة الطلبات (المُحسَّنة) -----
     elif menu == "📋 إدارة الطلبات":
         st.subheader("📋 إدارة الطلبات")
+        
+        # جلب جميع الطلبات
+        df = get_orders()
+        if df.empty:
+            st.info("لا توجد طلبات.")
+            return
+        
+        # تحويل تاريخ التسليم إلى datetime
+        df['delivery_date_dt'] = pd.to_datetime(df['delivery_date'])
+        today = pd.Timestamp(date.today())
+        
+        # حساب الأيام المتبقية
+        df['days_left'] = (df['delivery_date_dt'] - today).dt.days
+        
+        # تحديد حالة الموعد
+        def get_deadline_status(days):
+            if days < 0:
+                return "متأخر"
+            elif days <= 3:
+                return "قريب"
+            else:
+                return "عادي"
+        
+        df['deadline_status'] = df['days_left'].apply(get_deadline_status)
+        
+        # ترتيب الطلبات: المتأخر أولاً، ثم القريب، ثم العادي
+        status_order = {"متأخر": 0, "قريب": 1, "عادي": 2}
+        df['sort_order'] = df['deadline_status'].map(status_order)
+        df = df.sort_values(by=['sort_order', 'days_left']).drop(columns=['sort_order'])
+        
+        # مؤشرات سريعة
+        overdue_count = len(df[df['deadline_status'] == 'متأخر'])
+        soon_count = len(df[df['deadline_status'] == 'قريب'])
+        normal_count = len(df[df['deadline_status'] == 'عادي'])
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="label">🔴 متأخر</div>
+                <div class="value overdue">{overdue_count}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="label">🟡 قريب (≤ 3 أيام)</div>
+                <div class="value soon">{soon_count}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="label">🟢 عادي</div>
+                <div class="value normal">{normal_count}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # فلاتر البحث
         col1, col2, col3 = st.columns(3)
         with col1:
             selected_status = st.selectbox("فلترة حسب الحالة", ["الكل"] + STATUSES)
         with col2:
             search_text = st.text_input("بحث في الأسماء", placeholder="ابحث باسم الزبون")
         with col3:
-            date_filter = st.date_input("فلترة حسب تاريخ التسليم", value=None)
-        df = get_orders()
-        if df.empty:
-            st.info("لا توجد طلبات.")
-            return
+            filter_deadline = st.selectbox("فلترة حسب الموعد", ["الكل", "متأخر", "قريب", "عادي"])
+        
+        # تطبيق الفلاتر
+        filtered_df = df.copy()
         if selected_status != "الكل":
-            df = df[df["status"] == selected_status]
+            filtered_df = filtered_df[filtered_df["status"] == selected_status]
         if search_text:
-            df = df[df["name"].str.contains(search_text, case=False, na=False)]
-        if date_filter:
-            df = df[pd.to_datetime(df["delivery_date"]).dt.date == date_filter]
-        st.caption(f"📊 عدد الطلبات: {len(df)}")
-        for _, row in df.iterrows():
+            filtered_df = filtered_df[filtered_df["name"].str.contains(search_text, case=False, na=False)]
+        if filter_deadline != "الكل":
+            filtered_df = filtered_df[filtered_df["deadline_status"] == filter_deadline]
+        
+        st.caption(f"📊 عدد الطلبات: {len(filtered_df)}")
+        
+        # عرض الجدول مع تلوين الصفوف
+        if not filtered_df.empty:
+            # اختيار الأعمدة للعرض
+            display_df = filtered_df[["id", "name", "phone", "item_type", "status", "delivery_date", "days_left", "deadline_status", "remaining_price"]].copy()
+            display_df.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي (يوم)", "حالة الموعد", "المتبقي (د.ع)"]
+            
+            # تنسيق الأعمدة
+            display_df["المتبقي (يوم)"] = display_df["المتبقي (يوم)"].astype(int)
+            display_df["المتبقي (د.ع)"] = display_df["المتبقي (د.ع)"].apply(lambda x: f"{x:,.0f} د.ع")
+            
+            # تلوين الصفوف باستخدام Styler
+            def color_rows(row):
+                status = row["حالة الموعد"]
+                if status == "متأخر":
+                    return ['background-color: #f8d7da; color: #721c24;'] * len(row)
+                elif status == "قريب":
+                    return ['background-color: #fff3cd; color: #856404;'] * len(row)
+                else:
+                    return ['background-color: #d4edda; color: #155724;'] * len(row)
+            
+            styled_df = display_df.style.apply(color_rows, axis=1)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        
+        # عرض تفاصيل كل طلب في expander
+        for _, row in filtered_df.iterrows():
             order_id = int(row["id"])
             status_icon = {"قيد الانتظار":"🟡","جارٍ القص":"🔵","جارٍ التفصيل":"🟣","جارٍ الكي":"🟠","جاهز للاستلام":"🟢","تم التسليم":"✅","ملغي":"❌"}.get(row["status"], "📌")
-            with st.expander(f"{status_icon} #{order_id} | {row['name']} | {row['item_type']} | {row['status']}"):
+            
+            # إضافة حالة الموعد في عنوان التوسيع
+            deadline_icon = "🔴" if row["deadline_status"] == "متأخر" else "🟡" if row["deadline_status"] == "قريب" else "🟢"
+            with st.expander(f"{status_icon} #{order_id} | {row['name']} | {row['item_type']} | {row['status']} | {deadline_icon} {row['deadline_status']}"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.write(f"**👤 الزبون:** {row['name']}")
                     st.write(f"**📞 الهاتف:** {row['phone'] or 'غير محدد'}")
                     st.write(f"**📅 التسجيل:** {row['created_at']}")
-                    st.write(f"**📆 التسليم:** {row['delivery_date'] or 'غير محدد'}")
+                    st.write(f"**📆 التسليم:** {row['delivery_date']}")
+                    st.write(f"**⏳ المتبقي:** {row['days_left']} يوم")
                 with col2:
                     st.write("**📏 القياسات**")
                     st.write(f"الطول: {row['length']} سم")
@@ -779,6 +871,7 @@ def main():
                     if float(row['remaining_price'] or 0) == 0:
                         st.success("✅ تم السداد بالكامل")
                 st.write(f"**📝 الملاحظات:** {row['notes'] or 'لا توجد ملاحظات'}")
+                
                 order = get_order(order_id)
                 if order:
                     current_status = order["status"]
