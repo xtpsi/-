@@ -38,20 +38,17 @@ st.set_page_config(
 )
 
 # =========================
-# كود CSS لتزيين الواجهة (ألوان وأشكال جميلة)
+# كود CSS لتزيين الواجهة
 # =========================
 def apply_custom_css():
     st.markdown("""
     <style>
-        /* خلفية الصفحة */
         .stApp {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         }
-        /* القائمة الجانبية */
         .css-1d391kg {
             background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
         }
-        /* عناصر القائمة */
         .stRadio > div {
             display: flex;
             flex-direction: column;
@@ -72,11 +69,9 @@ def apply_custom_css():
             transform: scale(1.02);
             border-color: #f1c40f;
         }
-        /* إخفاء الدوائر الصغيرة في القائمة */
         .stRadio label > div:first-child {
             display: none;
         }
-        /* الأزرار */
         .stButton button {
             background: linear-gradient(135deg, #f1c40f, #f39c12);
             color: #1e3c72;
@@ -92,7 +87,6 @@ def apply_custom_css():
             transform: scale(1.05);
             box-shadow: 0 6px 15px rgba(0,0,0,0.3);
         }
-        /* بطاقات التوسيع */
         .streamlit-expanderHeader {
             background: linear-gradient(135deg, #2a5298, #1e3c72) !important;
             color: white !important;
@@ -108,23 +102,19 @@ def apply_custom_css():
             border: 1px solid #1e3c72;
             border-top: none;
         }
-        /* بطاقات الأرقام (metrics) */
         .css-1xarl3l {
             background: rgba(255,255,255,0.85);
             border-radius: 15px;
             padding: 15px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
-        /* العناوين */
         h1, h2, h3 {
             color: #1e3c72;
             font-weight: 700;
         }
-        /* تذييل الصفحة (إخفاء) */
         footer {
             visibility: hidden;
         }
-        /* شريط التمرير */
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -135,6 +125,14 @@ def apply_custom_css():
         ::-webkit-scrollbar-thumb {
             background: #2a5298;
             border-radius: 10px;
+        }
+        /* تنسيق رسالة التحديث التلقائي */
+        .measurement-suggestion {
+            background-color: #e8f0fe;
+            border-right: 5px solid #f1c40f;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -152,7 +150,6 @@ def rtl(text):
 
 @st.cache_resource
 def get_font(size):
-    """البحث عن خط عربي في المسارات الشائعة"""
     paths = [
         "assets/fonts/NotoNaskhArabic-Regular.ttf",
         "assets/fonts/Amiri-Regular.ttf",
@@ -216,7 +213,6 @@ def ensure_column(table, column, definition):
 
 def init_db():
     conn = db.get_connection()
-    # جدول الزبائن
     conn.execute("""
         CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,7 +222,6 @@ def init_db():
             last_order_date TEXT
         )
     """)
-    # جدول الطلبات
     conn.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,7 +249,6 @@ def init_db():
     ensure_column("orders", "delivery_date", "TEXT")
     ensure_column("orders", "updated_at", "TEXT")
     ensure_column("customers", "last_order_date", "TEXT")
-    # جدول الدفعات
     conn.execute("""
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,22 +259,20 @@ def init_db():
         )
     """)
     ensure_column("payments", "notes", "TEXT")
-    # فهارس لتسريع البحث
     conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at)")
     db.commit()
 
-# تهيئة قاعدة البيانات عند أول تشغيل
 init_db()
 
 # =========================
-# دوال البيانات الأساسية (العمليات)
+# دوال البيانات الأساسية
 # =========================
 @st.cache_data(ttl=60)
 def get_customers():
     conn = db.get_connection()
-    return pd.read_sql_query("SELECT * FROM customers ORDER BY id DESC", conn)
+    return pd.read_sql_query("SELECT * FROM customers ORDER BY name", conn)
 
 @st.cache_data(ttl=30)
 def get_orders():
@@ -294,6 +286,14 @@ def get_order(order_id):
 def get_payments(order_id):
     conn = db.get_connection()
     return conn.execute("SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC", (order_id,)).fetchall()
+
+def get_last_order_by_customer(customer_id):
+    """جلب آخر طلب لزبون معين (لجلب قياساته الأخيرة)"""
+    conn = db.get_connection()
+    return conn.execute(
+        "SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT 1",
+        (customer_id,)
+    ).fetchone()
 
 def get_or_create_customer(name, phone):
     conn = db.get_connection()
@@ -437,34 +437,29 @@ def get_status_counts():
     return df['status'].value_counts()
 
 # =========================
-# دالة توليد الإيصال (بتصميم أنيق وجذاب)
+# دالة توليد الإيصال
 # =========================
 def generate_receipt(order):
     width, height = 1100, 1600
     image = Image.new("RGB", (width, height), "#f8f9fa")
     draw = ImageDraw.Draw(image)
     
-    # تحميل الخطوط
     title_font = get_font(56)
     big_font = get_font(40)
     body_font = get_font(32)
     small_font = get_font(26)
     bold_font = get_font(36)
     
-    # إطار خارجي
     draw.rectangle((30, 30, width-30, height-30), outline="#1e3c72", width=8, fill=(255,255,255,240))
     draw.rectangle((45, 45, width-45, height-45), outline="#f1c40f", width=3)
     
-    # رأس الإيصال (خلفية زرقاء)
     draw.rectangle((45, 45, width-45, 230), fill="#1e3c72")
     draw.text((width//2, 80), rtl(SHOP_NAME), font=title_font, fill="white", anchor="mt")
     draw.text((width//2, 150), f"📞 {SHOP_PHONE}", font=big_font, fill="#f1c40f", anchor="mt")
     
-    # عنوان الإيصال
     draw.text((width//2, 280), rtl("وصل استلام طلب"), font=title_font, fill="#1e3c72", anchor="mt")
     draw.line((300, 320, width-300, 320), fill="#f1c40f", width=4)
     
-    # بيانات الطلب
     y = 380
     fields = [
         ("رقم الطلب", f"#{order['id']}"),
@@ -479,10 +474,8 @@ def generate_receipt(order):
         draw.text((80, y+40), rtl(str(value)), font=bold_font, fill="#2a5298")
         y += 100
     
-    # خط فاصل
     draw.line((80, y-20, width-80, y-20), fill="#e0e0e0", width=2)
     
-    # القياسات
     y += 20
     draw.text((80, y), rtl("القياسات (سم)"), font=big_font, fill="#1e3c72")
     y += 60
@@ -499,7 +492,6 @@ def generate_receipt(order):
     draw.line((80, y-20, width-80, y-20), fill="#e0e0e0", width=2)
     y += 20
     
-    # الحساب
     draw.text((80, y), rtl("الحساب"), font=big_font, fill="#1e3c72")
     y += 60
     finance = [
@@ -512,12 +504,10 @@ def generate_receipt(order):
         draw.text((350, y), rtl(value), font=bold_font, fill="#e67e22")
         y += 70
     
-    # الحالة
     status_color = "#27ae60" if order['status'] == "جاهز للاستلام" else "#2980b9"
     draw.text((80, y), rtl(f"الحالة: {order['status']}"), font=bold_font, fill=status_color)
     y += 80
     
-    # ملاحظات
     draw.line((80, y-20, width-80, y-20), fill="#e0e0e0", width=2)
     y += 20
     draw.text((80, y), rtl("ملاحظات:"), font=big_font, fill="#1e3c72")
@@ -539,12 +529,10 @@ def generate_receipt(order):
         draw.text((100, y), rtl(line), font=small_font, fill="#555")
         y += 45
     
-    # تذييل وختم
     footer_y = height - 150
     draw.line((80, footer_y-30, width-80, footer_y-30), fill="#f1c40f", width=3)
     draw.text((width//2, footer_y), rtl("شكراً لتعاملكم معنا"), font=big_font, fill="#1e3c72", anchor="mt")
     draw.text((width//2, footer_y+60), rtl(SHOP_NAME), font=small_font, fill="#7f8c8d", anchor="mt")
-    # ختم دائري
     draw.ellipse((width-250, footer_y-20, width-150, footer_y+80), outline="#f1c40f", width=4)
     draw.text((width-200, footer_y+30), rtl("معتمد"), font=small_font, fill="#1e3c72", anchor="mm")
     
@@ -554,26 +542,22 @@ def generate_receipt(order):
     return buffer.getvalue()
 
 # =========================
-# الواجهة الرئيسية للتطبيق
+# الواجهة الرئيسية
 # =========================
 def main():
-    # تطبيق التنسيقات الجميلة
     apply_custom_css()
     
-    # رأس الصفحة المزخرف
     st.markdown("""
     <div style="background: linear-gradient(135deg, #1e3c72, #2a5298); padding: 25px; border-radius: 20px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 20px rgba(0,0,0,0.3);">
         <h1 style="color: white; font-size: 3.5em; margin: 0;">✂️ صادق الخياط</h1>
-        <p style="color: #f1c40f; font-size: 1.3em; margin-top: 5px;">نظام إدارة الطلبات والقياسات – تصميم عصري</p>
+        <p style="color: #f1c40f; font-size: 1.3em; margin-top: 5px;">نظام إدارة الطلبات والقياسات – مع اقتراح القياسات التلقائي</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # التنبيه بالطلبات المتأخرة
     overdue = get_overdue_orders()
     if not overdue.empty:
         st.warning(f"⚠️ هناك {len(overdue)} طلباً متأخراً عن موعد التسليم!")
     
-    # القائمة الجانبية مع أيقونات
     menu_icons = {
         "🏠 لوحة التحكم": "📊",
         "➕ إضافة طلب": "📝",
@@ -629,29 +613,95 @@ def main():
         show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي"]
         st.dataframe(show, use_container_width=True, hide_index=True)
     
-    # ----- 2. إضافة طلب -----
+    # ----- 2. إضافة طلب (مع خاصية اقتراح القياسات) -----
     elif menu == "➕ إضافة طلب":
         st.subheader("➕ تسجيل طلب جديد")
+        
+        # جلب قائمة الزبائن
+        customers_df = get_customers()
+        customer_options = ["【زبون جديد】"]
+        customer_ids = {0: None}  # للتعرف على الخيارات
+        
+        if not customers_df.empty:
+            for idx, row in customers_df.iterrows():
+                display_name = f"{row['name']} - {row['phone'] or 'بدون هاتف'}"
+                customer_options.append(display_name)
+                customer_ids[len(customer_options)-1] = row['id']  # ربط العرض بمعرف الزبون
+        
+        # اختيار الزبون
+        selected_option = st.selectbox(
+            "👤 اختر زبوناً موجوداً (أو اختر 'زبون جديد')",
+            customer_options,
+            key="customer_selector"
+        )
+        
+        # تحديد إذا كان زبون جديد أم موجود
+        selected_index = customer_options.index(selected_option)
+        customer_id = customer_ids.get(selected_index, None)
+        
+        # متغيرات لحفظ القياسات المقترحة
+        suggested_length = 0.0
+        suggested_width = 0.0
+        suggested_shoulder = 0.0
+        suggested_sleeve = 0.0
+        suggested_collar = 0.0
+        suggested_cuff = 0.0
+        suggested_phone = ""
+        suggested_name = ""
+        
+        # إذا كان الزبون موجوداً، جلب آخر قياساته
+        if customer_id is not None:
+            last_order = get_last_order_by_customer(customer_id)
+            if last_order:
+                suggested_name = last_order['name']
+                suggested_phone = last_order['phone'] or ""
+                suggested_length = float(last_order['length'] or 0)
+                suggested_width = float(last_order['width'] or 0)
+                suggested_shoulder = float(last_order['shoulder'] or 0)
+                suggested_sleeve = float(last_order['sleeve'] or 0)
+                suggested_collar = float(last_order['collar'] or 0)
+                suggested_cuff = float(last_order['cuff'] or 0)
+                
+                # عرض رسالة تأكيد
+                st.success(f"✅ تم جلب قياسات {suggested_name} من آخر طلب له.")
+                st.info(f"📏 الطول: {suggested_length} | العرض: {suggested_width} | الكتاف: {suggested_shoulder} | يمكنك تعديلها قبل الحفظ.")
+            else:
+                st.warning("⚠️ هذا الزبون مسجل لكن ليس لديه طلبات سابقة، أدخل القياسات يدوياً.")
+        
+        # نموذج الإضافة
         with st.form("new_order", clear_on_submit=True):
+            st.markdown("### 👤 معلومات الزبون")
             col1, col2 = st.columns(2)
-            name = col1.text_input("اسم الزبون *", placeholder="أدخل اسم الزبون")
-            phone = col2.text_input("رقم الهاتف", placeholder="أدخل رقم الهاتف")
+            # إذا كان هناك اسم مقترح، ضعه في الحقل
+            name_value = suggested_name if suggested_name else ""
+            name = col1.text_input("اسم الزبون *", value=name_value, placeholder="أدخل اسم الزبون")
+            
+            phone_value = suggested_phone if suggested_phone else ""
+            phone = col2.text_input("رقم الهاتف", value=phone_value, placeholder="أدخل رقم الهاتف")
+            
+            st.markdown("### 📋 تفاصيل الطلب")
             col1, col2 = st.columns(2)
             item_type = col1.selectbox("نوع التفصيل", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "جاكيت", "تفصيل آخر"])
             delivery_date = col2.date_input("تاريخ التسليم المتوقع", value=date.today() + timedelta(days=7))
-            st.markdown("### 📏 القياسات بالسنتيمتر")
+            
+            st.markdown("### 📏 القياسات بالسنتيمتر (تم تعبئتها تلقائياً إن وجدت)")
             col1, col2, col3 = st.columns(3)
-            length = col1.number_input("الطول", min_value=0.0, step=0.5, format="%.1f")
-            width = col1.number_input("العرض", min_value=0.0, step=0.5, format="%.1f")
-            shoulder = col2.number_input("عرض الكتاف", min_value=0.0, step=0.5, format="%.1f")
-            sleeve = col2.number_input("طول الردان", min_value=0.0, step=0.5, format="%.1f")
-            collar = col3.number_input("الياخة", min_value=0.0, step=0.5, format="%.1f")
-            cuff = col3.number_input("البزمة", min_value=0.0, step=0.5, format="%.1f")
+            length = col1.number_input("الطول", min_value=0.0, step=0.5, format="%.1f", value=suggested_length)
+            width = col1.number_input("العرض", min_value=0.0, step=0.5, format="%.1f", value=suggested_width)
+            shoulder = col2.number_input("عرض الكتاف", min_value=0.0, step=0.5, format="%.1f", value=suggested_shoulder)
+            sleeve = col2.number_input("طول الردان", min_value=0.0, step=0.5, format="%.1f", value=suggested_sleeve)
+            collar = col3.number_input("الياخة", min_value=0.0, step=0.5, format="%.1f", value=suggested_collar)
+            cuff = col3.number_input("البزمة", min_value=0.0, step=0.5, format="%.1f", value=suggested_cuff)
+            
             notes = st.text_area("📝 ملاحظات", placeholder="القماش، اللون، الموديل...")
+            
+            st.markdown("### 💰 الحساب")
             col1, col2 = st.columns(2)
             total_price = col1.number_input("السعر الكلي (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
             advance_paid = col2.number_input("المبلغ المدفوع (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
+            
             submitted = st.form_submit_button("💾 حفظ الطلب", use_container_width=True, type="primary")
+            
             if submitted:
                 if not name.strip():
                     st.error("⚠️ يرجى إدخال اسم الزبون.")
@@ -680,6 +730,8 @@ def main():
                             st.success(f"✅ تم حفظ الطلب رقم #{order_id} بنجاح.")
                             st.info(f"💵 المبلغ المتبقي: {remaining:,.0f} د.ع")
                             st.balloons()
+                            # إعادة تعيين الـ selectbox بعد الحفظ (اختياري)
+                            # st.rerun() # يمكنك إلغاء التعليق إذا أردت إعادة تعيين النموذج
     
     # ----- 3. إدارة الطلبات -----
     elif menu == "📋 إدارة الطلبات":
@@ -874,8 +926,5 @@ def main():
                 st.success("تمت استعادة النسخة الاحتياطية بنجاح.")
                 st.rerun()
 
-# =========================
-# تشغيل التطبيق
-# =========================
 if __name__ == "__main__":
     main()
