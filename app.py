@@ -39,49 +39,102 @@ def init_db():
 
 init_db()
 
-# --- 2. إعداد الصفحة والتنسيقات (CSS) ---
+# --- 2. إعداد الصفحة والتنسيقات الجمالية (CSS) ---
 st.set_page_config(page_title="صادق الخياط", page_icon="✂️", layout="wide")
 
 st.markdown(
     """
     <style>
-    .stApp { background-color: #F8F9FA; }
+    /* خلفية متدرجة عصرية وانسيابية للموقع */
+    .stApp {
+        background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 50%, #d1d5db 100%);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
     
+    /* القائمة الجانبية كحلي ملكي متدرج */
     section[data-testid="stSidebar"] {
-        background-color: #1E293B !important;
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
     }
     section[data-testid="stSidebar"] * {
-        color: #F8FAFC !important;
+        color: #f8fafc !important;
     }
-    
+
+    /* تحسين شكل البطاقات والعناوين */
     .main-header {
-        font-size: 26px; font-weight: bold; color: #0F172A; text-align: center;
-        padding: 14px; background: white; border-radius: 12px;
-        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05); margin-bottom: 25px;
+        font-size: 28px;
+        font-weight: 800;
+        color: #1e293b;
+        text-align: center;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(8px);
+        border-radius: 16px;
+        box-shadow: 0px 10px 25px rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        margin-bottom: 15px;
     }
 
     .shop-phone {
-        font-size: 16px; color: #2563EB; font-weight: bold; text-align: center;
-        margin-top: -15px; margin-bottom: 20px;
+        font-size: 16px;
+        color: #2563eb;
+        font-weight: 700;
+        text-align: center;
+        margin-top: -8px;
+        margin-bottom: 25px;
     }
 
+    /* شارات القياسات المصممة بعناية */
     .measure-tag {
-        display: inline-block; background-color: #EFF6FF; color: #1D4ED8;
-        padding: 6px 12px; margin: 3px; border-radius: 8px; font-weight: bold;
-        font-size: 14px; border: 1px solid #BFDBFE;
+        display: inline-block;
+        background-color: #ffffff;
+        color: #1d4ed8;
+        padding: 6px 14px;
+        margin: 4px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 14px;
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
     }
 
+    /* شارات مواعيد التسليم */
     .date-badge-late {
-        background-color: #FEE2E2; color: #991B1B; padding: 4px 10px;
-        border-radius: 6px; font-weight: bold; font-size: 13px;
+        background-color: #fee2e2;
+        color: #991b1b;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 13px;
+        border: 1px solid #fca5a5;
     }
 
     .date-badge-today {
-        background-color: #FEF3C7; color: #92400E; padding: 4px 10px;
-        border-radius: 6px; font-weight: bold; font-size: 13px;
+        background-color: #fef3c7;
+        color: #92400e;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 13px;
+        border: 1px solid #fde68a;
     }
 
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
+    /* تحسين مظهر الأزرار */
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(37, 99, 235, 0.3);
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -93,7 +146,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 st.sidebar.markdown(
-    "<p style='text-align: center; color: #94A3B8 !important; font-weight: bold;'>📞 07713146637</p>",
+    "<p style='text-align: center; color: #94a3b8 !important; font-weight: bold;'>📞 07713146637</p>",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown("---")
@@ -110,11 +163,11 @@ choice = st.sidebar.radio("التنقل السريع:", menu)
 # --- 4. إضافة طلب جديد ---
 if choice == "📝 إضافة طلب جديد":
     st.markdown(
-        "<div class='main-header'>📝 تسجيل طلب وقياسات جديدة - صادق الخياط</div>",
+        "<div class='main-header'>📝 تسجيل طلب وقياسات جديدة</div>",
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<div class='shop-phone'>📞 رقم الهاتف: 07713146637</div>",
+        "<div class='shop-phone'>صادق الخياط | 📞 07713146637</div>",
         unsafe_allow_html=True,
     )
 
@@ -216,7 +269,7 @@ elif choice == "📋 جدول العمل والدور":
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<div class='shop-phone'>📞 صادق الخياط: 07713146637</div>",
+        "<div class='shop-phone'>صادق الخياط | 📞 07713146637</div>",
         unsafe_allow_html=True,
     )
 
@@ -250,7 +303,6 @@ elif choice == "📋 جدول العمل والدور":
                 o_deliv,
             ) = row
 
-            # تنبيه موعد التسليم
             date_status_html = ""
             if o_status != "تم التسليم":
                 if o_deliv < today_str:
@@ -346,7 +398,7 @@ elif choice == "💵 تسديد الديون والحسابات":
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<div class='shop-phone'>📞 صادق الخياط: 07713146637</div>",
+        "<div class='shop-phone'>صادق الخياط | 📞 07713146637</div>",
         unsafe_allow_html=True,
     )
 
@@ -461,11 +513,12 @@ elif choice == "🔍 البحث عن زبون":
 # --- 8. الإحصائيات والمالية ---
 elif choice == "📊 الإحصائيات والمالية":
     st.markdown(
-        "<div class='main-header'>📊 ملخص الأرباح والديون العامة - صادق الخياط</div>",
+        "<div class='main-header'>📊 ملخص الأرباح والديون العامة</div>",
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<div class='shop-phone'>📞 07713146637</div>", unsafe_allow_html=True
+        "<div class='shop-phone'>صادق الخياط | 📞 07713146637</div>",
+        unsafe_allow_html=True,
     )
 
     conn = get_connection()
