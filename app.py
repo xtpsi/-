@@ -2,20 +2,18 @@ import sqlite3
 from datetime import datetime
 import streamlit as st
 
-# --- 1. إعداد قاعدة البيانات بترميز UTF-8 ---
-DB_NAME = "tailor_utf8.db"
+# --- 1. إعداد قاعدة البيانات ---
+DB_NAME = "tailor_advanced.db"
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-    # إجبار الاتصال على استقبال وإرسال النصوص بترميز UTF-8
-    conn.text_factory = str
-    return conn
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
 
 
 def init_db():
     conn = get_connection()
     c = conn.cursor()
+    # جدول الطلبات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS orders (
@@ -23,12 +21,7 @@ def init_db():
             name TEXT,
             phone TEXT,
             item_type TEXT,
-            length REAL,
-            width REAL,
-            shoulder REAL,
-            sleeve REAL,
-            collar REAL,
-            cuff REAL,
+            length REAL, width REAL, shoulder REAL, sleeve REAL, collar REAL, cuff REAL,
             notes TEXT,
             total_price REAL,
             advance_paid REAL,
@@ -38,6 +31,7 @@ def init_db():
         )
     """
     )
+    # جدول سجل الدفعات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS payments (
@@ -55,25 +49,12 @@ def init_db():
 
 init_db()
 
-# --- 2. إعداد الواجهة ---
+# --- 2. الواجهة الرئيسية ---
 st.set_page_config(
     page_title="خياطة الفيحاء - إدارة الطلبات والمحاسبة",
     page_icon="✂️",
     layout="wide",
 )
-
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-    html, body, [class*="css"], div, span, p {
-        font-family: 'Cairo', sans-serif !important;
-    }
-    </style>
-""",
-    unsafe_allow_html=True,
-)
-
 st.title("✂️ نظام إدارة الخياطة والمحاسبة الذكي")
 
 menu = [
@@ -118,12 +99,10 @@ if choice == "📝 إضافة طلب جديد":
         st.markdown("**💰 التفاصيل المالية:**")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            total_price = st.number_input(
-                "السعر الكلي (د.ع)", min_value=0.0, step=1000.0
-            )
+            total_price = st.number_input("السعر الكلي", min_value=0.0, step=1.0)
         with col_p2:
             advance_paid = st.number_input(
-                "العربون المدفوع (د.ع)", min_value=0.0, step=1000.0
+                "العربون المدفوع", min_value=0.0, step=1.0
             )
 
         submit = st.form_submit_button("حفظ الطلب والحساب")
@@ -170,10 +149,10 @@ if choice == "📝 إضافة طلب جديد":
                 conn.commit()
                 conn.close()
                 st.success(
-                    f"تم حفظ الطلب بنجاح! المتبقي على الزبون: {remaining:,.0f} د.ع"
+                    f"تم حفظ الطلب! المتبقي على الزبون: {remaining:,.0f}"
                 )
 
-# --- 4. تسديد الديون والحسابات ---
+# --- 4. تسديد الديون والحسابات (القسم الجديد) ---
 elif choice == "💵 تسديد الديون والحسابات":
     st.subheader("💵 تسديد المبالغ المتبقية والديون")
 
@@ -190,20 +169,20 @@ elif choice == "💵 تسديد الديون والحسابات":
         for debtor in debtors:
             d_id, d_name, d_phone, d_item, d_total, d_paid, d_rem = debtor
             with st.expander(
-                f"👤 {d_name} | {d_item} | المتبقي عليه: [{d_rem:,.0f} د.ع]"
+                f"👤 {d_name} | {d_item} | المتبقي عليه: [{d_rem:,.0f}]"
             ):
                 st.write(f"**رقم الهاتف:** {d_phone}")
                 st.write(
-                    f"**السعر الكلي:** {d_total:,.0f} د.ع | **الواصل:** {d_paid:,.0f} د.ع | **المتبقي:** :red[{d_rem:,.0f} د.ع]"
+                    f"**السعر الكلي:** {d_total:,.0f} | **المقروض/الواصل:** {d_paid:,.0f} | **المتبقي:** :red[{d_rem:,.0f}]"
                 )
 
                 col_pay1, col_pay2 = st.columns([2, 1])
                 with col_pay1:
                     pay_amount = st.number_input(
-                        "المبلغ المستلم الآن (د.ع):",
+                        "المبلغ المستلم الآن:",
                         min_value=0.0,
                         max_value=float(d_rem),
-                        step=1000.0,
+                        step=1.0,
                         key=f"pay_input_{d_id}",
                     )
                 with col_pay2:
@@ -228,9 +207,7 @@ elif choice == "💵 تسديد الديون والحسابات":
                             conn.commit()
                             conn.close()
 
-                            st.success(
-                                f"تم تسجيل دفعة بقيمة {pay_amount:,.0f} د.ع بنجاح!"
-                            )
+                            st.success(f"تم تسجيل دفعة بقيمة {pay_amount:,.0f}!")
                             st.rerun()
                         else:
                             st.warning("أدخل مبلغاً أكبر من صفر.")
@@ -277,16 +254,14 @@ elif choice == "📋 جدول العمل والدور":
                     st.write(f"**التاريخ:** {o_date}")
                     st.write(f"**الملاحظات:** {o_notes}")
                 with c2:
-                    st.write("**القياسات (سم):**")
+                    st.write("**القياسات:**")
                     st.write(
                         f"طول: {o_len} | عرض: {o_wid} | كتاف: {o_sh}\nردان: {o_slv} | ياخة: {o_col} | بزمة: {o_cuf}"
                     )
                 with c3:
                     st.write("**الحساب:**")
-                    st.write(
-                        f"الكلي: {o_total:,.0f} د.ع | الواصل: {o_paid:,.0f} د.ع"
-                    )
-                    st.write(f"**المتبقي:** :red[{o_rem:,.0f} د.ع]")
+                    st.write(f"الكلي: {o_total:,.0f} | الواصل: {o_paid:,.0f}")
+                    st.write(f"**المتبقي:** :red[{o_rem:,.0f}]")
 
                 st.markdown("---")
                 col_st, col_del = st.columns([3, 1])
@@ -353,9 +328,10 @@ elif choice == "🔍 البحث عن زبون":
                     f"**القياسات:** طول {r[4]} | عرض {r[5]} | كتاف {r[6]} | ردان {r[7]} | ياخة {r[8]} | بزمة {r[9]}"
                 )
                 st.write(
-                    f"**المالية:** الكلي: {r[11]:,.0f} د.ع | الواصل: {r[12]:,.0f} د.ع | المتبقي: {r[13]:,.0f} د.ع"
+                    f"**المالية:** الكلي: {r[11]:,.0f} | الواصل: {r[12]:,.0f} | المتبقي: {r[13]:,.0f}"
                 )
 
+                # عرض سجل الدفعات السابقة
                 c.execute(
                     "SELECT amount, payment_date FROM payments WHERE order_id = ? ORDER BY id DESC",
                     (r[0],),
@@ -364,9 +340,7 @@ elif choice == "🔍 البحث عن زبون":
                 if pays:
                     st.write("**سجل الدفعات المقبوضة:**")
                     for p in pays:
-                        st.caption(
-                            f"• تم تسديد {p[0]:,.0f} د.ع بتاريخ {p[1]}"
-                        )
+                        st.caption(f"• تم تسديد {p[0]:,.0f} بتاريخ {p[1]}")
                 st.markdown("---")
         else:
             st.warning("لم يتم العثور على زبون مطابق.")
@@ -391,6 +365,6 @@ elif choice == "📊 الإحصائيات والمالية":
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("إجمالي الطلبات", total_orders)
-    m2.metric("إجمالي المبالغ", f"{total_income:,.0f} د.ع")
-    m3.metric("الواصل المقبوض", f"{total_paid:,.0f} د.ع")
-    m4.metric("إجمالي الديون", f"{total_due:,.0f} د.ع")
+    m2.metric("إجمالي المبالغ", f"{total_income:,.0f}")
+    m3.metric("الواصل المقبوض فعلياً", f"{total_paid:,.0f}")
+    m4.metric("إجمالي الديون المتأخرة", f"{total_due:,.0f}")
