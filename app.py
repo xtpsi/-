@@ -10,7 +10,58 @@ from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
 
+# ==========================================
+# تحسين واجهة المستخدم باستخدام CSS و Tailwind
+# ==========================================
+st.markdown("""
+    <!-- استدعاء Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+    /* تغيير خلفية التطبيق وتنسيق النصوص */
+    .stApp {
+        background-color: #f8fafc;
+        direction: rtl;
+        text-align: right;
+    }
+    
+    /* تصميم البطاقات الجانبية والرئيسية */
+    div[data-testid="stVerticalBlock"] > div {
+        background-color: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        padding: 1rem;
+    }
+    
+    /* تحسين شكل خانات الإدخال */
+    .stTextInput input, .stSelectbox select, .stTextArea textarea {
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    .stTextInput input:focus {
+        border-color: #2563eb !important;
+        box-shadow: 0 0 0 3px #93c5fd !important;
+    }
 
+    /* تحسين تصميم الأزرار */
+    .stButton > button {
+        background-color: #2563eb !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        width: 100%;
+        transition: all 0.2s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #1d4ed8 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 # =========================
 # إعدادات عامة
 # =========================
