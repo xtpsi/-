@@ -86,7 +86,7 @@ st.markdown(
 
 # --- 3. القائمة الجانبية ---
 st.sidebar.markdown(
-    "<h2 style='text-align: center;'>✂️ خياطة مهندس وأولاده</h2>",
+    "<h2 style='text-align: center;'>✂️ خياطة مهدي وأولاده</h2>",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown("---")
