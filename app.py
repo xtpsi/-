@@ -1,76 +1,53 @@
-import io
-import os
 import sqlite3
-import urllib.parse
 from datetime import datetime, date
-
 import pandas as pd
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
 
 # ==========================================
-# 1. إعداد الصفحة وتلغية القائمة الجانبية بالكامل
+# 1. إعداد الصفحة وتلغية القائمة الجانبية
 # ==========================================
 st.set_page_config(page_title="صادق الخياط", page_icon="✂️", layout="wide", initial_sidebar_state="collapsed")
 
-# إخفاء القائمة الجانبية وتنسيق الواجهة الرئيسية للجوال والحاسبة
 st.markdown("""
     <style>
-    /* إخفاء القائمة الجانبية وأزرار التحكم بها */
-    section[data-testid="stSidebar"] {
+    section[data-testid="stSidebar"], button[aria-label="Toggle sidebar"] {
         display: none !important;
     }
-    button[aria-label="Toggle sidebar"] {
-        display: none !important;
-    }
-    
-    /* اتجاه وخلفية الصفحة */
     .stApp {
         background-color: #f8fafc;
         direction: rtl;
         text-align: right;
     }
-    
-    /* تقليل المسافات العلوية للـ Mobile */
     .main .block-container {
         padding-top: 1.5rem !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
         max-width: 100% !important;
     }
-
-    /* تحسين شكل التبويبات الرئيسية (Tabs) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 6px;
         background-color: #ffffff;
-        padding: 8px;
-        border-radius: 12px;
+        padding: 6px;
+        border-radius: 10px;
         border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         display: flex;
         justify-content: space-around;
-        overflow-x: auto;
     }
-
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
+        height: 45px;
         border-radius: 8px;
         background-color: #f1f5f9;
         color: #334155;
-        font-size: 15px;
         font-weight: bold;
         border: 1px solid #cbd5e1;
         flex-grow: 1;
         text-align: center;
     }
-
     .stTabs [aria-selected="true"] {
         background-color: #2563eb !important;
         color: white !important;
         border-color: #2563eb !important;
     }
-
-    /* تصميم البطاقات وحاويات البيانات */
     div[data-testid="stVerticalBlock"] > div {
         background-color: #ffffff;
         border-radius: 12px;
@@ -78,13 +55,10 @@ st.markdown("""
         padding: 1rem;
         margin-bottom: 0.5rem;
     }
-
-    /* تصميم الأزرار وحقول الإدخال */
     .stTextInput input, .stSelectbox select, .stTextArea textarea, .stDateInput input {
         border-radius: 8px !important;
         border: 1px solid #cbd5e1 !important;
     }
-
     .stButton > button {
         background-color: #2563eb !important;
         color: white !important;
@@ -98,11 +72,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. إعدادات قاعدة البيانات والدوال
+# 2. إعدادات قاعدة البيانات والدوال الآمنة
 # ==========================================
 DB_NAME = "tailor_master.db"
 SHOP_NAME = "صادق الخياط"
-
 STATUSES = ["قيد الانتظار", "جاري القص", "جاري التفصيل", "جاري الكي", "جاهز للاستلام", "تم التسليم"]
 
 def safe_parse_date(date_val):
@@ -126,16 +99,16 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_name TEXT,
-            phone TEXT,
-            item_type TEXT,
-            status TEXT,
-            notes TEXT,
-            delivery_date TEXT,
+            customer_name TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            item_type TEXT DEFAULT '',
+            status TEXT DEFAULT 'قيد الانتظار',
+            notes TEXT DEFAULT '',
+            delivery_date TEXT DEFAULT '',
             total_price REAL DEFAULT 0,
             paid_amount REAL DEFAULT 0,
             remaining_amount REAL DEFAULT 0,
-            created_at TEXT
+            created_at TEXT DEFAULT ''
         )
     """)
     conn.commit()
@@ -144,14 +117,11 @@ def init_db():
 init_db()
 
 # ==========================================
-# 3. الهيدر الرئيسي للتطبيق
+# 3. الواجهة الرئيسية والتنقل
 # ==========================================
 st.markdown(f"<h2 style='text-align: center; color: #1e293b; margin-bottom: 0px;'>✂️ {SHOP_NAME}</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>نظام إدارة الطلبات والقياسات والحسابات</p>", unsafe_allow_html=True)
 
-# ==========================================
-# 4. القائمة الرئيسية على شكل أيقونات/تبويبات علوية
-# ==========================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏠 التحكم",
     "➕ إضافة",
@@ -170,8 +140,12 @@ with tab1:
 
     col1, col2, col3 = st.columns(3)
     col1.metric("إجمالي الطلبات", len(df_orders))
-    col2.metric("قيد الانتظار", len(df_orders[df_orders['status'] == 'قيد الانتظار']) if not df_orders.empty else 0)
-    col3.metric("جاهز للاستلام", len(df_orders[df_orders['status'] == 'جاهز للاستلام']) if not df_orders.empty else 0)
+    
+    pending_count = len(df_orders[df_orders['status'] == 'قيد الانتظار']) if ('status' in df_orders.columns and not df_orders.empty) else 0
+    ready_count = len(df_orders[df_orders['status'] == 'جاهز للاستلام']) if ('status' in df_orders.columns and not df_orders.empty) else 0
+    
+    col2.metric("قيد الانتظار", pending_count)
+    col3.metric("جاهز للاستلام", ready_count)
 
 # ------------------------------------------
 # التبويب الثاني: إضافة طلب
@@ -201,11 +175,12 @@ with tab2:
                 conn.commit()
                 conn.close()
                 st.success("تم حفظ الطلب بنجاح!")
+                st.rerun()
             else:
                 st.error("يرجى إدخال اسم الزبون.")
 
 # ------------------------------------------
-# التبويب الثالث: إدارة الطلبات
+# التبويب الثالث: إدارة الطلبات (الوصول الآمن للأعمدة)
 # ------------------------------------------
 with tab3:
     st.subheader("إدارة الطلبات")
@@ -215,12 +190,22 @@ with tab3:
 
     if not df.empty:
         for idx, row in df.iterrows():
-            d_val = safe_parse_date(row["delivery_date"])
-            with st.expander(f"#{row['id']} | {row['customer_name']} | {row['item_type']} ({row['status']})"):
-                st.write(f"**رقم الهاتف:** {row['phone']}")
+            order_id = row.get('id', idx)
+            cust_name = row.get('customer_name', 'غير محدد')
+            i_type = row.get('item_type', 'غير محدد')
+            st_val = row.get('status', 'غير محدد')
+            phone_val = row.get('phone', '-')
+            d_val = safe_parse_date(row.get('delivery_date', ''))
+            tot_p = row.get('total_price', 0)
+            p_p = row.get('paid_amount', 0)
+            rem_p = row.get('remaining_amount', 0)
+            nts = row.get('notes', '-')
+
+            with st.expander(f"#{order_id} | {cust_name} | {i_type} ({st_val})"):
+                st.write(f"**رقم الهاتف:** {phone_val}")
                 st.write(f"**تاريخ الاستلام:** {d_val}")
-                st.write(f"**المبلغ الكلي:** {row['total_price']} | **المدفوع:** {row['paid_amount']} | **المتبقي:** {row['remaining_amount']}")
-                st.write(f"**ملاحظات:** {row['notes']}")
+                st.write(f"**المبلغ الكلي:** {tot_p} | **المدفوع:** {p_p} | **المتبقي:** {rem_p}")
+                st.write(f"**ملاحظات:** {nts}")
     else:
         st.info("لا توجد طلبات مسجلة حالياً.")
 
@@ -230,11 +215,16 @@ with tab3:
 with tab4:
     st.subheader("الحسابات والديون")
     conn = get_connection()
-    df = pd.read_sql_query("SELECT customer_name, phone, remaining_amount FROM orders WHERE remaining_amount > 0", conn)
+    df = pd.read_sql_query("SELECT * FROM orders WHERE remaining_amount > 0", conn)
     conn.close()
 
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
+    if not df.empty and 'customer_name' in df.columns:
+        show_df = df[['customer_name', 'phone', 'remaining_amount']].rename(columns={
+            'customer_name': 'اسم الزبون',
+            'phone': 'رقم الهاتف',
+            'remaining_amount': 'المبلغ المتبقي'
+        })
+        st.dataframe(show_df, use_container_width=True)
     else:
         st.success("لا يوجد ديون متبقية على الزبائن!")
 
@@ -248,4 +238,7 @@ with tab5:
         conn = get_connection()
         df = pd.read_sql_query("SELECT * FROM orders WHERE customer_name LIKE ? OR phone LIKE ?", conn, params=(f"%{search_query}%", f"%{search_query}%"))
         conn.close()
-        st.dataframe(df, use_container_width=True)
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("لم يتم العثور على نتائج مطابقة.")
