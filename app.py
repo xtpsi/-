@@ -2,8 +2,6 @@ import io
 import os
 import sqlite3
 from datetime import datetime, date, timedelta
-import hashlib
-import hmac
 import time
 
 import pandas as pd
@@ -14,12 +12,11 @@ from bidi.algorithm import get_display
 import matplotlib.pyplot as plt
 
 # =========================
-# إعدادات الأمان والثوابت
+# إعدادات عامة
 # =========================
 DB_NAME = "tailor_master.db"
 SHOP_NAME = "صادق الخياط"
 SHOP_PHONE = "07713146637"
-ADMIN_PASSWORD = "admin123"  # غيّر هذه القيمة فوراً!
 
 STATUSES = [
     "قيد الانتظار",
@@ -31,42 +28,12 @@ STATUSES = [
     "ملغي",
 ]
 
-# إعدادات الصفحة
 st.set_page_config(
     page_title=f"{SHOP_NAME} - إدارة الطلبات",
     page_icon="✂️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# =========================
-# إدارة الجلسة
-# =========================
-def init_session_state():
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if "last_refresh" not in st.session_state:
-        st.session_state.last_refresh = time.time()
-
-init_session_state()
-
-# =========================
-# نظام المصادقة
-# =========================
-def check_password():
-    if st.session_state.authenticated:
-        return True
-    st.sidebar.markdown("### 🔐 تسجيل الدخول")
-    password = st.sidebar.text_input("كلمة المرور", type="password", key="login_password")
-    if password:
-        if hmac.compare_digest(password, ADMIN_PASSWORD):
-            st.session_state.authenticated = True
-            st.sidebar.success("✅ تم تسجيل الدخول بنجاح")
-            st.rerun()
-        else:
-            st.sidebar.error("❌ كلمة المرور غير صحيحة")
-            return False
-    return False
 
 # =========================
 # أدوات اللغة العربية
@@ -457,10 +424,8 @@ def generate_receipt(order):
 # الواجهة الرئيسية
 # =========================
 def main():
-    if not check_password():
-        st.stop()
     st.title("✂️ صادق الخياط")
-    st.caption("نظام إدارة الطلبات والقياسات والحسابات - نسخة مطوّرة")
+    st.caption("نظام إدارة الطلبات والقياسات والحسابات")
     overdue = get_overdue_orders()
     if not overdue.empty:
         st.warning(f"⚠️ هناك {len(overdue)} طلباً متأخراً عن موعد التسليم!")
@@ -474,7 +439,6 @@ def main():
             "👥 الزبائن",
             "🔍 البحث المتقدم",
             "📊 الإحصائيات والتقارير",
-            "⚙️ الإعدادات",
             "💾 النسخ الاحتياطي",
         ],
     )
@@ -700,7 +664,7 @@ def main():
             view = customers.copy()
             view.columns = ["رقم", "الاسم", "الهاتف", "تاريخ الإضافة", "آخر طلب"]
             st.dataframe(view, use_container_width=True, hide_index=True)
-            customer_id = st.selectbox("اختر زبونًا لعرض طلباته", customers["id"].tolist(),
+            customer_id = st.selectbox("اختر زبوناً لعرض طلباته", customers["id"].tolist(),
                                        format_func=lambda x: f"{customers.loc[customers['id']==x, 'name'].iloc[0]} - {customers.loc[customers['id']==x, 'phone'].iloc[0]}")
             conn = db.get_connection()
             orders = pd.read_sql_query("SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC", conn, params=(int(customer_id),))
@@ -749,23 +713,10 @@ def main():
                 ax.set_ylabel('العدد')
                 plt.xticks(rotation=45)
                 st.pyplot(fig)
-            # تقرير شهري
             st.subheader("التقرير الشهري")
             monthly = get_monthly_report()
             if not monthly.empty:
                 st.dataframe(monthly, use_container_width=True, hide_index=True)
-
-    # ---------- الإعدادات ----------
-    elif menu == "⚙️ الإعدادات":
-        st.subheader("⚙️ الإعدادات")
-        st.info("يمكنك تخصيص الإعدادات هنا.")
-        new_shop_name = st.text_input("اسم المحل", value=SHOP_NAME)
-        new_phone = st.text_input("رقم الهاتف", value=SHOP_PHONE)
-        new_password = st.text_input("كلمة مرور جديدة (اتركها فارغة للإبقاء على القديمة)", type="password")
-        if st.button("💾 حفظ الإعدادات"):
-            # هنا يمكنك حفظ الإعدادات في ملف config أو قاعدة بيانات
-            st.success("تم حفظ الإعدادات (ملاحظة: التغييرات مؤقتة في هذه النسخة).")
-            st.info("لتطبيق التغييرات بشكل دائم، قم بتعديل الثوابت في أعلى الملف.")
 
     # ---------- النسخ الاحتياطي ----------
     elif menu == "💾 النسخ الاحتياطي":
