@@ -11,8 +11,7 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
-import plotly.express as px
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 # =========================
 # إعدادات الأمان والثوابت
@@ -574,3 +573,299 @@ def generate_receipt(order):
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer.getvalue()
+
+# =========================
+# الواجهة الرئيسية - الجزء المتبقي
+# =========================
+def main():
+    # التحقق من المصادقة
+    if not check_password():
+        st.stop()
+    
+    # رأس الصفحة
+    st.title("✂️ صادق الخياط")
+    st.caption("نظام إدارة الطلبات والقياسات والحسابات - نسخة مطوّرة")
+    
+    # عرض التنبيهات
+    check_overdue = get_overdue_orders()
+    if not check_overdue.empty:
+        st.warning(f"⚠️ هناك {len(check_overdue)} طلباً متأخراً عن موعد التسليم!")
+    
+    # القائمة الجانبية
+    menu = st.sidebar.radio(
+        "القائمة الرئيسية",
+        [
+            "🏠 لوحة التحكم",
+            "➕ إضافة طلب",
+            "📋 إدارة الطلبات",
+            "💵 الدفعات والديون",
+            "👥 الزبائن",
+            "🔍 البحث المتقدم",
+            "📊 الإحصائيات والتقارير",
+            "⚙️ الإعدادات",
+            "💾 النسخ الاحتياطي",
+        ],
+    )
+    
+    # =========================
+    # لوحة التحكم (مُحسّنة)
+    # =========================
+    if menu == "🏠 لوحة التحكم":
+        st.subheader("📊 لوحة التحكم")
+        
+        df = get_orders()
+        if df.empty:
+            st.info("لا توجد طلبات مسجلة حتى الآن.")
+            return
+        
+        # المؤشرات الرئيسية
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        total_orders = len(df)
+        total_revenue = df["total_price"].fillna(0).sum()
+        total_paid = df["advance_paid"].fillna(0).sum()
+        total_due = df["remaining_price"].fillna(0).sum()
+        
+        # الطلبات المكتملة
+        completed = len(df[df["status"] == "تم التسليم"])
+        completion_rate = (completed / total_orders * 100) if total_orders > 0 else 0
+        
+        col1.metric("📦 إجمالي الطلبات", total_orders)
+        col2.metric("💰 إجمالي المبيعات", f"{total_revenue:,.0f} د.ع")
+        col3.metric("💵 المقبوض", f"{total_paid:,.0f} د.ع")
+        col4.metric("📉 المتبقي", f"{total_due:,.0f} د.ع", delta=f"{total_due/total_revenue*100:.1f}%" if total_revenue > 0 else "0%")
+        col5.metric("✅ نسبة الإنجاز", f"{completion_rate:.1f}%")
+        
+        # الرسوم البيانية باستخدام Matplotlib
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("توزيع الطلبات حسب الحالة")
+            status_counts = get_status_counts()
+            if not status_counts.empty:
+                fig, ax = plt.subplots(figsize=(6, 4))
+                colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#FF8C94']
+                ax.pie(status_counts.values, labels=status_counts.index, autopct='%1.1f%%', colors=colors[:len(status_counts)])
+                ax.set_title('حالة الطلبات')
+                st.pyplot(fig)
+        
+        with col2:
+            st.subheader("المبيعات الشهرية")
+            monthly = get_monthly_report()
+            if not monthly.empty:
+                fig, ax = plt.subplots(figsize=(6, 4))
+                ax.bar(monthly['الشهر'].astype(str), monthly['إجمالي المبيعات'], color='#4ECDC4')
+                ax.set_xlabel('الشهر')
+                ax.set_ylabel('المبيعات (د.ع)')
+                ax.set_title('المبيعات الشهرية')
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
+        
+        # آخر الطلبات
+        st.subheader("📋 آخر الطلبات")
+        show = df.head(10)[["id", "name", "phone", "item_type", "status", "delivery_date", "remaining_price"]].copy()
+        show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي"]
+        st.dataframe(show, use_container_width=True, hide_index=True)
+    
+    # =========================
+    # إضافة طلب
+    # =========================
+    elif menu == "➕ إضافة طلب":
+        st.subheader("➕ تسجيل طلب جديد")
+        
+        with st.form("new_order", clear_on_submit=True):
+            st.markdown("### 👤 معلومات الزبون")
+            col1, col2 = st.columns(2)
+            name = col1.text_input("اسم الزبون *", placeholder="أدخل اسم الزبون")
+            phone = col2.text_input("رقم الهاتف", placeholder="أدخل رقم الهاتف")
+            
+            st.markdown("### 📋 تفاصيل الطلب")
+            col1, col2 = st.columns(2)
+            item_type = col1.selectbox(
+                "نوع التفصيل",
+                ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "جاكيت", "تفصيل آخر"]
+            )
+            delivery_date = col2.date_input("تاريخ التسليم المتوقع", value=date.today() + timedelta(days=7))
+            
+            st.markdown("### 📏 القياسات بالسنتيمتر")
+            col1, col2, col3 = st.columns(3)
+            length = col1.number_input("الطول", min_value=0.0, step=0.5, format="%.1f")
+            width = col1.number_input("العرض", min_value=0.0, step=0.5, format="%.1f")
+            shoulder = col2.number_input("عرض الكتاف", min_value=0.0, step=0.5, format="%.1f")
+            sleeve = col2.number_input("طول الردان", min_value=0.0, step=0.5, format="%.1f")
+            collar = col3.number_input("الياخة", min_value=0.0, step=0.5, format="%.1f")
+            cuff = col3.number_input("البزمة", min_value=0.0, step=0.5, format="%.1f")
+            
+            notes = st.text_area("📝 ملاحظات", placeholder="القماش، اللون، الموديل، تعليمات خاصة...")
+            
+            st.markdown("### 💰 الحساب")
+            col1, col2 = st.columns(2)
+            total_price = col1.number_input("السعر الكلي (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
+            advance_paid = col2.number_input("المبلغ المدفوع (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
+            
+            submitted = st.form_submit_button("💾 حفظ الطلب", use_container_width=True, type="primary")
+            
+            if submitted:
+                if not name.strip():
+                    st.error("⚠️ يرجى إدخال اسم الزبون.")
+                elif advance_paid > total_price:
+                    st.error("⚠️ المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الكلي.")
+                else:
+                    with st.spinner('جاري حفظ الطلب...'):
+                        order_id, remaining, error = create_order({
+                            "name": name,
+                            "phone": phone,
+                            "item_type": item_type,
+                            "length": length,
+                            "width": width,
+                            "shoulder": shoulder,
+                            "sleeve": sleeve,
+                            "collar": collar,
+                            "cuff": cuff,
+                            "notes": notes,
+                            "total_price": total_price,
+                            "advance_paid": advance_paid,
+                            "delivery_date": delivery_date,
+                        })
+                        
+                        if error:
+                            st.error(f"❌ حدث خطأ: {error}")
+                        else:
+                            st.success(f"✅ تم حفظ الطلب رقم #{order_id} بنجاح.")
+                            st.info(f"💵 المبلغ المتبقي: {remaining:,.0f} د.ع")
+                            st.balloons()
+    
+    # =========================
+    # إدارة الطلبات
+    # =========================
+    elif menu == "📋 إدارة الطلبات":
+        st.subheader("📋 إدارة الطلبات")
+        
+        # فلترة متقدمة
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            selected_status = st.selectbox("فلترة حسب الحالة", ["الكل"] + STATUSES)
+        with col2:
+            search_text = st.text_input("بحث في الأسماء", placeholder="ابحث باسم الزبون")
+        with col3:
+            date_filter = st.date_input("فلترة حسب تاريخ التسليم", value=None)
+        
+        df = get_orders()
+        if df.empty:
+            st.info("لا توجد طلبات.")
+            return
+        
+        # تطبيق الفلاتر
+        if selected_status != "الكل":
+            df = df[df["status"] == selected_status]
+        if search_text:
+            df = df[df["name"].str.contains(search_text, case=False, na=False)]
+        if date_filter:
+            df = df[pd.to_datetime(df["delivery_date"]).dt.date == date_filter]
+        
+        st.caption(f"📊 عدد الطلبات: {len(df)}")
+        
+        for _, row in df.iterrows():
+            order_id = int(row["id"])
+            
+            status_colors = {
+                "قيد الانتظار": "🟡",
+                "جارٍ القص": "🔵",
+                "جارٍ التفصيل": "🟣",
+                "جارٍ الكي": "🟠",
+                "جاهز للاستلام": "🟢",
+                "تم التسليم": "✅",
+                "ملغي": "❌",
+            }
+            status_icon = status_colors.get(row["status"], "📌")
+            
+            with st.expander(f"{status_icon} #{order_id} | {row['name']} | {row['item_type']} | {row['status']}"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.write(f"**👤 الزبون:** {row['name']}")
+                    st.write(f"**📞 الهاتف:** {row['phone'] or 'غير محدد'}")
+                    st.write(f"**📅 التسجيل:** {row['created_at']}")
+                    st.write(f"**📆 التسليم:** {row['delivery_date'] or 'غير محدد'}")
+                
+                with col2:
+                    st.write("**📏 القياسات**")
+                    st.write(f"الطول: {row['length']} سم")
+                    st.write(f"العرض: {row['width']} سم")
+                    st.write(f"الكتاف: {row['shoulder']} سم")
+                    st.write(f"الردان: {row['sleeve']} سم")
+                    st.write(f"الياخة: {row['collar']} سم")
+                    st.write(f"البزمة: {row['cuff']} سم")
+                
+                with col3:
+                    st.write(f"**💰 السعر:** {float(row['total_price'] or 0):,.0f} د.ع")
+                    st.write(f"**💵 المدفوع:** {float(row['advance_paid'] or 0):,.0f} د.ع")
+                    st.write(f"**📉 المتبقي:** {float(row['remaining_price'] or 0):,.0f} د.ع")
+                    if float(row['remaining_price'] or 0) == 0:
+                        st.success("✅ تم السداد بالكامل")
+                
+                st.write(f"**📝 الملاحظات:** {row['notes'] or 'لا توجد ملاحظات'}")
+                
+                order = get_order(order_id)
+                if order:
+                    current_status = order["status"]
+                    status_index = STATUSES.index(current_status) if current_status in STATUSES else 0
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        new_status = st.selectbox(
+                            "الحالة",
+                            STATUSES,
+                            index=status_index,
+                            key=f"status_{order_id}",
+                        )
+                        if st.button("💾 تحديث", key=f"update_{order_id}", use_container_width=True):
+                            success, error = update_status(order_id, new_status)
+                            if success:
+                                st.success("✅ تم تحديث الحالة.")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ خطأ: {error}")
+                    
+                    with col2:
+                        receipt = generate_receipt(order)
+                        st.download_button(
+                            "🖼️ تنزيل الوصل",
+                            data=receipt,
+                            file_name=f"receipt_{order_id}.png",
+                            mime="image/png",
+                            key=f"receipt_{order_id}",
+                            use_container_width=True,
+                        )
+                    
+                    with col3:
+                        if st.button("🗑️ حذف", key=f"delete_{order_id}", use_container_width=True):
+                            confirm = st.checkbox(f"تأكيد حذف الطلب #{order_id}", key=f"confirm_{order_id}")
+                            if confirm:
+                                success, error = delete_order(order_id)
+                                if success:
+                                    st.success("✅ تم حذف الطلب.")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ خطأ: {error}")
+                
+                # عرض سجل الدفعات
+                payments = get_payments(order_id)
+                if payments:
+                    st.write("**💳 سجل الدفعات:**")
+                    payment_df = pd.DataFrame([dict(p) for p in payments])[["amount", "payment_date", "notes"]]
+                    payment_df.columns = ["المبلغ", "التاريخ", "ملاحظات"]
+                    st.dataframe(payment_df, use_container_width=True, hide_index=True)
+    
+    # =========================
+    # الدفعات والديون
+    # =========================
+    elif menu == "💵 الدفعات والديون":
+        st.subheader("💵 الدفعات والديون")
+        df = get_orders()
+        
+        if df.empty:
+            st.info("لا توجد بيانات.")
+        else:
+            debtors = df[df["remaining_price"].
