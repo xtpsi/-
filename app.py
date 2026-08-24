@@ -41,9 +41,9 @@ init_db()
 
 # --- 2. إعداد الواجهة ---
 st.set_page_config(
-    page_title="نظام إدارة الخياطة والمحاسبة", page_icon="✂️", layout="wide"
+    page_title="حياطة مهدي و اولاد", page_icon="✂️", layout="wide"
 )
-st.title("✂️ نظام إدارة محل الخياطة والمحاسبة الشامل")
+st.title("✂️ خياطة مهدي و اولاده")
 
 menu = [
     "📝 إضافة طلب جديد",
