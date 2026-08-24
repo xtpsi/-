@@ -11,7 +11,7 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 
 # =========================
-# إعدادات المحل (يمكنك تعديلها هنا)
+# إعدادات المحل (عدّل هنا حسب رغبتك)
 # =========================
 DB_NAME = "tailor_master.db"
 SHOP_NAME = "صادق الخياط"
@@ -27,14 +27,120 @@ STATUSES = [
     "ملغي",
 ]
 
+# =========================
+# تنسيق الصفحة الأساسي
+# =========================
 st.set_page_config(
     page_title=f"{SHOP_NAME} - إدارة الطلبات",
     page_icon="✂️",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 # =========================
-# أدوات اللغة العربية
+# كود CSS لتزيين الواجهة (ألوان وأشكال جميلة)
+# =========================
+def apply_custom_css():
+    st.markdown("""
+    <style>
+        /* خلفية الصفحة */
+        .stApp {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+        /* القائمة الجانبية */
+        .css-1d391kg {
+            background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
+        }
+        /* عناصر القائمة */
+        .stRadio > div {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .stRadio label {
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 12px 18px;
+            color: white !important;
+            font-size: 18px;
+            font-weight: bold;
+            transition: 0.3s;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .stRadio label:hover {
+            background-color: rgba(255,255,255,0.25);
+            transform: scale(1.02);
+            border-color: #f1c40f;
+        }
+        /* إخفاء الدوائر الصغيرة في القائمة */
+        .stRadio label > div:first-child {
+            display: none;
+        }
+        /* الأزرار */
+        .stButton button {
+            background: linear-gradient(135deg, #f1c40f, #f39c12);
+            color: #1e3c72;
+            border: none;
+            border-radius: 30px;
+            padding: 10px 25px;
+            font-weight: bold;
+            font-size: 16px;
+            transition: 0.3s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .stButton button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+        }
+        /* بطاقات التوسيع */
+        .streamlit-expanderHeader {
+            background: linear-gradient(135deg, #2a5298, #1e3c72) !important;
+            color: white !important;
+            border-radius: 15px !important;
+            font-weight: bold;
+            font-size: 18px;
+            border: 1px solid #f1c40f;
+        }
+        .streamlit-expanderContent {
+            background: rgba(255,255,255,0.95);
+            border-radius: 0 0 15px 15px;
+            padding: 20px;
+            border: 1px solid #1e3c72;
+            border-top: none;
+        }
+        /* بطاقات الأرقام (metrics) */
+        .css-1xarl3l {
+            background: rgba(255,255,255,0.85);
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        /* العناوين */
+        h1, h2, h3 {
+            color: #1e3c72;
+            font-weight: 700;
+        }
+        /* تذييل الصفحة (إخفاء) */
+        footer {
+            visibility: hidden;
+        }
+        /* شريط التمرير */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a5298;
+            border-radius: 10px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# =========================
+# دوال اللغة العربية
 # =========================
 def rtl(text):
     if text is None:
@@ -46,6 +152,7 @@ def rtl(text):
 
 @st.cache_resource
 def get_font(size):
+    """البحث عن خط عربي في المسارات الشائعة"""
     paths = [
         "assets/fonts/NotoNaskhArabic-Regular.ttf",
         "assets/fonts/Amiri-Regular.ttf",
@@ -59,7 +166,7 @@ def get_font(size):
         if os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
-            except Exception:
+            except:
                 pass
     return ImageFont.load_default()
 
@@ -109,6 +216,7 @@ def ensure_column(table, column, definition):
 
 def init_db():
     conn = db.get_connection()
+    # جدول الزبائن
     conn.execute("""
         CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +226,7 @@ def init_db():
             last_order_date TEXT
         )
     """)
+    # جدول الطلبات
     conn.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +254,7 @@ def init_db():
     ensure_column("orders", "delivery_date", "TEXT")
     ensure_column("orders", "updated_at", "TEXT")
     ensure_column("customers", "last_order_date", "TEXT")
+    # جدول الدفعات
     conn.execute("""
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,15 +265,17 @@ def init_db():
         )
     """)
     ensure_column("payments", "notes", "TEXT")
+    # فهارس لتسريع البحث
     conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at)")
     db.commit()
 
+# تهيئة قاعدة البيانات عند أول تشغيل
 init_db()
 
 # =========================
-# دوال البيانات
+# دوال البيانات الأساسية (العمليات)
 # =========================
 @st.cache_data(ttl=60)
 def get_customers():
@@ -293,6 +405,9 @@ def add_payment(order_id, amount, notes):
     except Exception as e:
         return False, str(e)
 
+# =========================
+# دوال التقارير والإحصائيات
+# =========================
 def get_monthly_report():
     df = get_orders()
     if df.empty:
@@ -321,75 +436,98 @@ def get_status_counts():
         return pd.Series()
     return df['status'].value_counts()
 
+# =========================
+# دالة توليد الإيصال (بتصميم أنيق وجذاب)
+# =========================
 def generate_receipt(order):
-    width, height = 1100, 1550
-    image = Image.new("RGB", (width, height), "white")
+    width, height = 1100, 1600
+    image = Image.new("RGB", (width, height), "#f8f9fa")
     draw = ImageDraw.Draw(image)
-    title_font = get_font(52)
-    big_font = get_font(38)
-    body_font = get_font(29)
-    small_font = get_font(24)
-    draw.rectangle((20, 20, width - 20, height - 20), outline=(35, 55, 75), width=5)
-    draw.rectangle((25, 25, width - 25, 220), fill=(35, 55, 75))
-    def right(text, y, font, fill=(20, 20, 20), margin=70):
-        shaped = rtl(text)
-        box = draw.textbbox((0, 0), shaped, font=font)
-        x = width - margin - (box[2] - box[0])
-        draw.text((x, y), shaped, font=font, fill=fill)
-    right(SHOP_NAME, 55, title_font, "white")
-    right(f"الهاتف: {SHOP_PHONE}", 135, big_font, (230, 235, 240))
-    y = 270
-    right("وصل استلام طلب", y, title_font)
-    y += 95
-    info = [
-        f"رقم الطلب: #{order['id']}",
-        f"تاريخ التسجيل: {order['created_at'] or ''}",
-        f"تاريخ التسليم: {order['delivery_date'] or 'غير محدد'}",
-        f"اسم الزبون: {order['name']}",
-        f"رقم الهاتف: {order['phone'] or 'غير محدد'}",
-        f"نوع التفصيل: {order['item_type'] or ''}",
+    
+    # تحميل الخطوط
+    title_font = get_font(56)
+    big_font = get_font(40)
+    body_font = get_font(32)
+    small_font = get_font(26)
+    bold_font = get_font(36)
+    
+    # إطار خارجي
+    draw.rectangle((30, 30, width-30, height-30), outline="#1e3c72", width=8, fill=(255,255,255,240))
+    draw.rectangle((45, 45, width-45, height-45), outline="#f1c40f", width=3)
+    
+    # رأس الإيصال (خلفية زرقاء)
+    draw.rectangle((45, 45, width-45, 230), fill="#1e3c72")
+    draw.text((width//2, 80), rtl(SHOP_NAME), font=title_font, fill="white", anchor="mt")
+    draw.text((width//2, 150), f"📞 {SHOP_PHONE}", font=big_font, fill="#f1c40f", anchor="mt")
+    
+    # عنوان الإيصال
+    draw.text((width//2, 280), rtl("وصل استلام طلب"), font=title_font, fill="#1e3c72", anchor="mt")
+    draw.line((300, 320, width-300, 320), fill="#f1c40f", width=4)
+    
+    # بيانات الطلب
+    y = 380
+    fields = [
+        ("رقم الطلب", f"#{order['id']}"),
+        ("تاريخ التسجيل", order['created_at'] or ""),
+        ("تاريخ التسليم", order['delivery_date'] or "غير محدد"),
+        ("اسم الزبون", order['name']),
+        ("الهاتف", order['phone'] or "غير محدد"),
+        ("نوع التفصيل", order['item_type'] or ""),
     ]
-    for line in info:
-        right(line, y, body_font)
-        y += 58
-    draw.line((70, y, width - 70, y), fill=(160, 160, 160), width=2)
-    y += 30
-    right("القياسات (سم)", y, big_font)
-    y += 65
+    for label, value in fields:
+        draw.text((80, y), rtl(f"{label}:"), font=body_font, fill="#1e3c72")
+        draw.text((80, y+40), rtl(str(value)), font=bold_font, fill="#2a5298")
+        y += 100
+    
+    # خط فاصل
+    draw.line((80, y-20, width-80, y-20), fill="#e0e0e0", width=2)
+    
+    # القياسات
+    y += 20
+    draw.text((80, y), rtl("القياسات (سم)"), font=big_font, fill="#1e3c72")
+    y += 60
     measurements = [
-        f"الطول: {order['length']}",
-        f"العرض: {order['width']}",
-        f"الكتاف: {order['shoulder']}",
-        f"طول الردان: {order['sleeve']}",
-        f"الياخة: {order['collar']}",
-        f"البزمة: {order['cuff']}",
+        (f"الطول: {order['length']}", f"العرض: {order['width']}"),
+        (f"الكتاف: {order['shoulder']}", f"الردان: {order['sleeve']}"),
+        (f"الياخة: {order['collar']}", f"البزمة: {order['cuff']}"),
     ]
-    for line in measurements:
-        right(line, y, body_font)
-        y += 50
-    draw.line((70, y, width - 70, y), fill=(160, 160, 160), width=2)
-    y += 30
-    right("الحساب", y, big_font)
-    y += 65
+    for pair in measurements:
+        draw.text((100, y), rtl(pair[0]), font=body_font, fill="#333")
+        draw.text((400, y), rtl(pair[1]), font=body_font, fill="#333")
+        y += 60
+    
+    draw.line((80, y-20, width-80, y-20), fill="#e0e0e0", width=2)
+    y += 20
+    
+    # الحساب
+    draw.text((80, y), rtl("الحساب"), font=big_font, fill="#1e3c72")
+    y += 60
     finance = [
-        f"السعر الكلي: {float(order['total_price'] or 0):,.0f} د.ع",
-        f"المبلغ المدفوع: {float(order['advance_paid'] or 0):,.0f} د.ع",
-        f"المبلغ المتبقي: {float(order['remaining_price'] or 0):,.0f} د.ع",
-        f"الحالة: {order['status'] or ''}",
+        (f"السعر الكلي", f"{float(order['total_price'] or 0):,.0f} د.ع"),
+        (f"المدفوع", f"{float(order['advance_paid'] or 0):,.0f} د.ع"),
+        (f"المتبقي", f"{float(order['remaining_price'] or 0):,.0f} د.ع"),
     ]
-    for line in finance:
-        right(line, y, body_font)
-        y += 58
-    draw.line((70, y, width - 70, y), fill=(160, 160, 160), width=2)
-    y += 30
-    right("ملاحظات", y, big_font)
+    for label, value in finance:
+        draw.text((100, y), rtl(f"{label}:"), font=body_font, fill="#333")
+        draw.text((350, y), rtl(value), font=bold_font, fill="#e67e22")
+        y += 70
+    
+    # الحالة
+    status_color = "#27ae60" if order['status'] == "جاهز للاستلام" else "#2980b9"
+    draw.text((80, y), rtl(f"الحالة: {order['status']}"), font=bold_font, fill=status_color)
+    y += 80
+    
+    # ملاحظات
+    draw.line((80, y-20, width-80, y-20), fill="#e0e0e0", width=2)
+    y += 20
+    draw.text((80, y), rtl("ملاحظات:"), font=big_font, fill="#1e3c72")
     y += 60
     notes = order["notes"] or "لا توجد ملاحظات"
     words = str(notes).split()
     lines, current = [], ""
     for word in words:
         test = (current + " " + word).strip()
-        if len(test) > 55:
+        if len(test) > 50:
             if current:
                 lines.append(current)
             current = word
@@ -398,85 +536,100 @@ def generate_receipt(order):
     if current:
         lines.append(current)
     for line in lines[:5]:
-        right(line, y, small_font)
-        y += 42
-    footer_y = height - 130
-    draw.line((70, footer_y - 25, width - 70, footer_y - 25), fill=(160, 160, 160), width=2)
-    right("شكراً لتعاملكم معنا", footer_y, big_font)
-    right(SHOP_NAME, footer_y + 55, small_font)
+        draw.text((100, y), rtl(line), font=small_font, fill="#555")
+        y += 45
+    
+    # تذييل وختم
+    footer_y = height - 150
+    draw.line((80, footer_y-30, width-80, footer_y-30), fill="#f1c40f", width=3)
+    draw.text((width//2, footer_y), rtl("شكراً لتعاملكم معنا"), font=big_font, fill="#1e3c72", anchor="mt")
+    draw.text((width//2, footer_y+60), rtl(SHOP_NAME), font=small_font, fill="#7f8c8d", anchor="mt")
+    # ختم دائري
+    draw.ellipse((width-250, footer_y-20, width-150, footer_y+80), outline="#f1c40f", width=4)
+    draw.text((width-200, footer_y+30), rtl("معتمد"), font=small_font, fill="#1e3c72", anchor="mm")
+    
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer.getvalue()
 
 # =========================
-# الواجهة الرئيسية (بدون مصادقة)
+# الواجهة الرئيسية للتطبيق
 # =========================
 def main():
-    st.title("✂️ صادق الخياط")
-    st.caption("نظام إدارة الطلبات والقياسات والحسابات - نسخة مبسطة بدون كلمة مرور")
-
+    # تطبيق التنسيقات الجميلة
+    apply_custom_css()
+    
+    # رأس الصفحة المزخرف
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1e3c72, #2a5298); padding: 25px; border-radius: 20px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 20px rgba(0,0,0,0.3);">
+        <h1 style="color: white; font-size: 3.5em; margin: 0;">✂️ صادق الخياط</h1>
+        <p style="color: #f1c40f; font-size: 1.3em; margin-top: 5px;">نظام إدارة الطلبات والقياسات – تصميم عصري</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # التنبيه بالطلبات المتأخرة
     overdue = get_overdue_orders()
     if not overdue.empty:
         st.warning(f"⚠️ هناك {len(overdue)} طلباً متأخراً عن موعد التسليم!")
-
+    
+    # القائمة الجانبية مع أيقونات
+    menu_icons = {
+        "🏠 لوحة التحكم": "📊",
+        "➕ إضافة طلب": "📝",
+        "📋 إدارة الطلبات": "📂",
+        "💵 الدفعات والديون": "💰",
+        "👥 الزبائن": "👤",
+        "🔍 البحث المتقدم": "🔎",
+        "📊 الإحصائيات والتقارير": "📈",
+        "💾 النسخ الاحتياطي": "💾"
+    }
     menu = st.sidebar.radio(
         "القائمة الرئيسية",
-        [
-            "🏠 لوحة التحكم",
-            "➕ إضافة طلب",
-            "📋 إدارة الطلبات",
-            "💵 الدفعات والديون",
-            "👥 الزبائن",
-            "🔍 البحث المتقدم",
-            "📊 الإحصائيات والتقارير",
-            "💾 النسخ الاحتياطي",
-        ],
+        list(menu_icons.keys()),
+        format_func=lambda x: f"{menu_icons[x]} {x}"
     )
-
-    # ---------- لوحة التحكم ----------
+    
+    # ----- 1. لوحة التحكم -----
     if menu == "🏠 لوحة التحكم":
         st.subheader("📊 لوحة التحكم")
         df = get_orders()
         if df.empty:
             st.info("لا توجد طلبات مسجلة حتى الآن.")
             return
-
+        
         total_orders = len(df)
         total_revenue = df["total_price"].fillna(0).sum()
         total_paid = df["advance_paid"].fillna(0).sum()
         total_due = df["remaining_price"].fillna(0).sum()
         completed = len(df[df["status"] == "تم التسليم"])
         completion_rate = (completed / total_orders * 100) if total_orders > 0 else 0
-
+        
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("📦 إجمالي الطلبات", total_orders)
         col2.metric("💰 إجمالي المبيعات", f"{total_revenue:,.0f} د.ع")
         col3.metric("💵 المقبوض", f"{total_paid:,.0f} د.ع")
         col4.metric("📉 المتبقي", f"{total_due:,.0f} د.ع", delta=f"{total_due/total_revenue*100:.1f}%" if total_revenue > 0 else "0%")
         col5.metric("✅ نسبة الإنجاز", f"{completion_rate:.1f}%")
-
-        # رسوم بيانية باستخدام Streamlit Charts (بدون matplotlib)
+        
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("توزيع الطلبات حسب الحالة")
             status_counts = get_status_counts()
             if not status_counts.empty:
                 st.bar_chart(status_counts)
-
         with col2:
             st.subheader("المبيعات الشهرية")
             monthly = get_monthly_report()
             if not monthly.empty:
-                # نرسم المبيعات الشهرية كخط أو عمود
                 st.area_chart(monthly.set_index('الشهر')['إجمالي المبيعات'])
-
+        
         st.subheader("📋 آخر الطلبات")
         show = df.head(10)[["id", "name", "phone", "item_type", "status", "delivery_date", "remaining_price"]].copy()
         show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي"]
         st.dataframe(show, use_container_width=True, hide_index=True)
-
-    # ---------- إضافة طلب ----------
+    
+    # ----- 2. إضافة طلب -----
     elif menu == "➕ إضافة طلب":
         st.subheader("➕ تسجيل طلب جديد")
         with st.form("new_order", clear_on_submit=True):
@@ -527,8 +680,8 @@ def main():
                             st.success(f"✅ تم حفظ الطلب رقم #{order_id} بنجاح.")
                             st.info(f"💵 المبلغ المتبقي: {remaining:,.0f} د.ع")
                             st.balloons()
-
-    # ---------- إدارة الطلبات ----------
+    
+    # ----- 3. إدارة الطلبات -----
     elif menu == "📋 إدارة الطلبات":
         st.subheader("📋 إدارة الطلبات")
         col1, col2, col3 = st.columns(3)
@@ -607,8 +760,8 @@ def main():
                     payment_df = pd.DataFrame([dict(p) for p in payments])[["amount", "payment_date", "notes"]]
                     payment_df.columns = ["المبلغ", "التاريخ", "ملاحظات"]
                     st.dataframe(payment_df, use_container_width=True, hide_index=True)
-
-    # ---------- الدفعات والديون ----------
+    
+    # ----- 4. الدفعات والديون -----
     elif menu == "💵 الدفعات والديون":
         st.subheader("💵 الدفعات والديون")
         df = get_orders()
@@ -638,8 +791,8 @@ def main():
                                 st.rerun()
                             else:
                                 st.error(message)
-
-    # ---------- الزبائن ----------
+    
+    # ----- 5. الزبائن -----
     elif menu == "👥 الزبائن":
         st.subheader("👥 قاعدة بيانات الزبائن")
         customers = get_customers()
@@ -658,8 +811,8 @@ def main():
                 st.info("لا توجد طلبات لهذا الزبون.")
             else:
                 st.dataframe(orders, use_container_width=True, hide_index=True)
-
-    # ---------- البحث ----------
+    
+    # ----- 6. البحث المتقدم -----
     elif menu == "🔍 البحث المتقدم":
         st.subheader("🔍 البحث المتقدم")
         search = st.text_input("ابحث بالاسم أو رقم الهاتف أو رقم الطلب")
@@ -675,8 +828,8 @@ def main():
             else:
                 st.success(f"تم العثور على {len(results)} نتيجة.")
                 st.dataframe(results, use_container_width=True, hide_index=True)
-
-    # ---------- الإحصائيات ----------
+    
+    # ----- 7. الإحصائيات والتقارير -----
     elif menu == "📊 الإحصائيات والتقارير":
         st.subheader("📊 الإحصائيات والتقارير")
         df = get_orders()
@@ -696,8 +849,8 @@ def main():
             monthly = get_monthly_report()
             if not monthly.empty:
                 st.dataframe(monthly, use_container_width=True, hide_index=True)
-
-    # ---------- النسخ الاحتياطي ----------
+    
+    # ----- 8. النسخ الاحتياطي -----
     elif menu == "💾 النسخ الاحتياطي":
         st.subheader("💾 النسخ الاحتياطي")
         if os.path.exists(DB_NAME):
@@ -721,5 +874,8 @@ def main():
                 st.success("تمت استعادة النسخة الاحتياطية بنجاح.")
                 st.rerun()
 
+# =========================
+# تشغيل التطبيق
+# =========================
 if __name__ == "__main__":
     main()
