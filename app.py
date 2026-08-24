@@ -72,7 +72,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. إعدادات قاعدة البيانات والدوال الآمنة
+# 2. إعدادات قاعدة البيانات والتحديث الآلي
 # ==========================================
 DB_NAME = "tailor_master.db"
 SHOP_NAME = "صادق الخياط"
@@ -112,12 +112,35 @@ def init_db():
         )
     """)
     conn.commit()
+
+    # تحديث أعمدة قاعدة البيانات القديمة آلياً لتفادي DatabaseError
+    c.execute("PRAGMA table_info(orders)")
+    columns = [col[1] for col in c.fetchall()]
+    
+    missing_columns = {
+        'remaining_amount': 'REAL DEFAULT 0',
+        'paid_amount': 'REAL DEFAULT 0',
+        'total_price': 'REAL DEFAULT 0',
+        'delivery_date': "TEXT DEFAULT ''",
+        'item_type': "TEXT DEFAULT ''",
+        'status': "TEXT DEFAULT 'قيد الانتظار'",
+        'notes': "TEXT DEFAULT ''"
+    }
+
+    for col_name, col_type in missing_columns.items():
+        if col_name not in columns:
+            try:
+                c.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
+
+    conn.commit()
     conn.close()
 
 init_db()
 
 # ==========================================
-# 3. الواجهة الرئيسية والتنقل
+# 3. الواجهة الرئيسية
 # ==========================================
 st.markdown(f"<h2 style='text-align: center; color: #1e293b; margin-bottom: 0px;'>✂️ {SHOP_NAME}</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>نظام إدارة الطلبات والقياسات والحسابات</p>", unsafe_allow_html=True)
@@ -180,7 +203,7 @@ with tab2:
                 st.error("يرجى إدخال اسم الزبون.")
 
 # ------------------------------------------
-# التبويب الثالث: إدارة الطلبات (الوصول الآمن للأعمدة)
+# التبويب الثالث: إدارة الطلبات
 # ------------------------------------------
 with tab3:
     st.subheader("إدارة الطلبات")
@@ -210,21 +233,25 @@ with tab3:
         st.info("لا توجد طلبات مسجلة حالياً.")
 
 # ------------------------------------------
-# التبويب الرابع: الدفعات والديون
+# التبويب الرابع: الدفعات والديون (استعلام آمن)
 # ------------------------------------------
 with tab4:
     st.subheader("الحسابات والديون")
     conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM orders WHERE remaining_amount > 0", conn)
+    df_all = pd.read_sql_query("SELECT * FROM orders", conn)
     conn.close()
 
-    if not df.empty and 'customer_name' in df.columns:
-        show_df = df[['customer_name', 'phone', 'remaining_amount']].rename(columns={
-            'customer_name': 'اسم الزبون',
-            'phone': 'رقم الهاتف',
-            'remaining_amount': 'المبلغ المتبقي'
-        })
-        st.dataframe(show_df, use_container_width=True)
+    if not df_all.empty and 'remaining_amount' in df_all.columns:
+        df_debts = df_all[df_all['remaining_amount'] > 0]
+        if not df_debts.empty:
+            show_df = df_debts[['customer_name', 'phone', 'remaining_amount']].rename(columns={
+                'customer_name': 'اسم الزبون',
+                'phone': 'رقم الهاتف',
+                'remaining_amount': 'المبلغ المتبقي'
+            })
+            st.dataframe(show_df, use_container_width=True)
+        else:
+            st.success("لا يوجد ديون متبقية على الزبائن!")
     else:
         st.success("لا يوجد ديون متبقية على الزبائن!")
 
