@@ -13,32 +13,22 @@ def get_connection():
 def init_db():
     conn = get_connection()
     c = conn.cursor()
-    # جدول الطلبات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            phone TEXT,
-            item_type TEXT,
+            name TEXT, phone TEXT, item_type TEXT,
             length REAL, width REAL, shoulder REAL, sleeve REAL, collar REAL, cuff REAL,
-            notes TEXT,
-            total_price REAL,
-            advance_paid REAL,
-            remaining_price REAL,
-            status TEXT,
-            created_at TEXT
+            notes TEXT, total_price REAL, advance_paid REAL, remaining_price REAL,
+            status TEXT, created_at TEXT
         )
     """
     )
-    # جدول سجل الدفعات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER,
-            amount REAL,
-            payment_date TEXT,
+            order_id INTEGER, amount REAL, payment_date TEXT,
             FOREIGN KEY (order_id) REFERENCES orders (id)
         )
     """
@@ -49,13 +39,77 @@ def init_db():
 
 init_db()
 
-# --- 2. الواجهة الرئيسية ---
+# --- 2. إعداد الصفحة والستايل (CSS) ---
 st.set_page_config(
-    page_title="خياطة الفيحاء - إدارة الطلبات والمحاسبة",
-    page_icon="✂️",
-    layout="wide",
+    page_title="خياطة الفيحاء - النظام الشامل", page_icon="✂️", layout="wide"
 )
-st.title("✂️ نظام إدارة الخياطة والمحاسبة الذكي")
+
+# إضافة تنسيقات CSS مخصصة لتحسين الشكل العام
+st.markdown(
+    """
+    <style>
+    /* خلفية التطبيق العامة */
+    .stApp {
+        background-color: #F8F9FA;
+    }
+    
+    /* تحسين القائمة الجانبية */
+    section[data-testid="stSidebar"] {
+        background-color: #1E1E2E !important;
+        color: white;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #E0E0E0 !important;
+    }
+    
+    /* عناوين الفئات */
+    .main-header {
+        font-size: 26px;
+        font-weight: bold;
+        color: #2C3E50;
+        text-align: center;
+        padding: 12px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05);
+        margin-bottom: 25px;
+    }
+
+    /* شارات القياسات المصغرة */
+    .measure-tag {
+        display: inline-block;
+        background-color: #EBF5FB;
+        color: #2980B9;
+        padding: 6px 12px;
+        margin: 3px;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 14px;
+        border: 1px solid #AED6F1;
+    }
+    
+    /* تصميم الأزرار */
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+
+# --- 3. القائمة الجانبية ---
+st.sidebar.markdown(
+    "<h2 style='text-align: center;'>✂️ خياطة الفيحاء</h2>",
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown("---")
 
 menu = [
     "📝 إضافة طلب جديد",
@@ -64,52 +118,61 @@ menu = [
     "🔍 البحث عن زبون",
     "📊 الإحصائيات والمالية",
 ]
-choice = st.sidebar.radio("القائمة الرئيسية:", menu)
+choice = st.sidebar.radio("التنقل السريع:", menu)
 
-# --- 3. إضافة طلب جديد ---
+# --- 4. إضافة طلب جديد ---
 if choice == "📝 إضافة طلب جديد":
-    st.subheader("تسجيل طلب وقياسات وحساب جديد")
+    st.markdown(
+        "<div class='main-header'>📝 تسجيل طلب وقياسات وحساب جديد</div>",
+        unsafe_allow_html=True,
+    )
 
     with st.form("add_order_form", clear_on_submit=True):
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            name = st.text_input("اسم الزبون *")
+            name = st.text_input("👤 اسم الزبون *")
         with col_c2:
-            phone = st.text_input("رقم الهاتف")
+            phone = st.text_input("📞 رقم الهاتف")
 
         item_type = st.selectbox(
-            "نوع التفصال", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة"]
+            "🧵 نوع التفصال", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة"]
         )
 
         st.markdown("---")
-        st.markdown("**📐 القياسات (بالسم):**")
+        st.markdown("### 📐 القياسات (بالسنتيمتر)")
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            length = st.number_input("الطول الكلي", min_value=0.0, step=0.5)
-            width = st.number_input("العرض (الصدر)", min_value=0.0, step=0.5)
-            shoulder = st.number_input("عرض الكتاف", min_value=0.0, step=0.5)
+            length = st.number_input("📏 الطول الكلي", min_value=0.0, step=0.5)
+            width = st.number_input(
+                "↔️ العرض (الصدر)", min_value=0.0, step=0.5
+            )
+            shoulder = st.number_input(
+                "📐 عرض الكتاف", min_value=0.0, step=0.5
+            )
         with col_m2:
-            sleeve = st.number_input("طول الردان", min_value=0.0, step=0.5)
-            collar = st.number_input("الياخة", min_value=0.0, step=0.5)
-            cuff = st.number_input("البزمة", min_value=0.0, step=0.5)
+            sleeve = st.number_input("🦾 طول الردان", min_value=0.0, step=0.5)
+            collar = st.number_input("👔 الياخة", min_value=0.0, step=0.5)
+            cuff = st.number_input("🔘 البزمة", min_value=0.0, step=0.5)
 
-        notes = st.text_area("ملاحظات (نوع القماش، اللون، الموديل)")
+        notes = st.text_area("📝 ملاحظات تفصيلية (نوع القماش، اللون، النقشة)")
 
         st.markdown("---")
-        st.markdown("**💰 التفاصيل المالية:**")
+        st.markdown("### 💰 التفاصيل المالية")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            total_price = st.number_input("السعر الكلي", min_value=0.0, step=1.0)
+            total_price = st.number_input(
+                "💵 السعر الكلي", min_value=0.0, step=1.0
+            )
         with col_p2:
             advance_paid = st.number_input(
-                "العربون المدفوع", min_value=0.0, step=1.0
+                "💳 العربون المدفوع", min_value=0.0, step=1.0
             )
 
-        submit = st.form_submit_button("حفظ الطلب والحساب")
+        submit = st.form_submit_button("✅ حفظ الطلب والحساب")
 
         if submit:
             if not name.strip():
-                st.error("يرجى إدخال اسم الزبون!")
+                st.error("⚠️ يرجى إدخال اسم الزبون!")
             else:
                 remaining = max(0.0, total_price - advance_paid)
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -149,12 +212,15 @@ if choice == "📝 إضافة طلب جديد":
                 conn.commit()
                 conn.close()
                 st.success(
-                    f"تم حفظ الطلب! المتبقي على الزبون: {remaining:,.0f}"
+                    f"🎉 تم حفظ الطلب بنجاح! المتبقي على الزبون: {remaining:,.0f} د.ع"
                 )
 
-# --- 4. تسديد الديون والحسابات (القسم الجديد) ---
+# --- 5. تسديد الديون والحسابات ---
 elif choice == "💵 تسديد الديون والحسابات":
-    st.subheader("💵 تسديد المبالغ المتبقية والديون")
+    st.markdown(
+        "<div class='main-header'>💵 تسديد المبالغ المتبقية والديون</div>",
+        unsafe_allow_html=True,
+    )
 
     conn = get_connection()
     c = conn.cursor()
@@ -165,21 +231,21 @@ elif choice == "💵 تسديد الديون والحسابات":
     conn.close()
 
     if debtors:
-        st.write(f"عدد الزبائن الذين عليهم مبالغ متبقية: **{len(debtors)}**")
+        st.info(f"📌 عدد الزبائن المتبقي عليهم مبالغ: **{len(debtors)}**")
         for debtor in debtors:
             d_id, d_name, d_phone, d_item, d_total, d_paid, d_rem = debtor
             with st.expander(
-                f"👤 {d_name} | {d_item} | المتبقي عليه: [{d_rem:,.0f}]"
+                f"👤 {d_name} | {d_item} | المتبقي: ⚠️ [{d_rem:,.0f} د.ع]"
             ):
-                st.write(f"**رقم الهاتف:** {d_phone}")
+                st.write(f"📞 **الهاتف:** {d_phone}")
                 st.write(
-                    f"**السعر الكلي:** {d_total:,.0f} | **المقروض/الواصل:** {d_paid:,.0f} | **المتبقي:** :red[{d_rem:,.0f}]"
+                    f"💰 **السعر الكلي:** {d_total:,.0f} | **الواصل:** {d_paid:,.0f} | **المتبقي:** :red[{d_rem:,.0f} د.ع]"
                 )
 
                 col_pay1, col_pay2 = st.columns([2, 1])
                 with col_pay1:
                     pay_amount = st.number_input(
-                        "المبلغ المستلم الآن:",
+                        "المبلغ المستلم الان:",
                         min_value=0.0,
                         max_value=float(d_rem),
                         step=1.0,
@@ -188,7 +254,7 @@ elif choice == "💵 تسديد الديون والحسابات":
                 with col_pay2:
                     st.write(" ")
                     st.write(" ")
-                    if st.button("تأكيد استلام المبلغ 💵", key=f"pay_btn_{d_id}"):
+                    if st.button("💵 تأكيد الاستلام", key=f"pay_btn_{d_id}"):
                         if pay_amount > 0:
                             new_paid = d_paid + pay_amount
                             new_rem = d_total - new_paid
@@ -207,16 +273,19 @@ elif choice == "💵 تسديد الديون والحسابات":
                             conn.commit()
                             conn.close()
 
-                            st.success(f"تم تسجيل دفعة بقيمة {pay_amount:,.0f}!")
+                            st.success(
+                                f"✅ تم تسديد مبلغ {pay_amount:,.0f} بنجاح!"
+                            )
                             st.rerun()
-                        else:
-                            st.warning("أدخل مبلغاً أكبر من صفر.")
     else:
-        st.success("🎉 ممتاز! لا توجد ديون أو مبالغ متبقية على أي زبون.")
+        st.success("🎉 ممتاز! لا توجد مبالغ متبقية على أي زبون حالياً.")
 
-# --- 5. جدول العمل والدور ---
+# --- 6. جدول العمل والدور ---
 elif choice == "📋 جدول العمل والدور":
-    st.subheader("📋 متابعة الدور وحالة التفصيل")
+    st.markdown(
+        "<div class='main-header'>📋 متابعة الدور وحالة التفصيل</div>",
+        unsafe_allow_html=True,
+    )
 
     conn = get_connection()
     c = conn.cursor()
@@ -246,28 +315,37 @@ elif choice == "📋 جدول العمل والدور":
             ) = row
 
             with st.expander(
-                f"📌 #{o_id} | الزبون: {o_name} | {o_item} | الحالة: [{o_status}]"
+                f"📌 #{o_id} | 👤 {o_name} | 🧵 {o_item} | 🏷️ [{o_status}]"
             ):
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    st.write(f"**الهاتف:** {o_phone}")
-                    st.write(f"**التاريخ:** {o_date}")
-                    st.write(f"**الملاحظات:** {o_notes}")
+                    st.write(f"📞 **الهاتف:** {o_phone}")
+                    st.write(f"📅 **التاريخ:** {o_date}")
+                    st.write(f"📝 **الملاحظات:** {o_notes}")
                 with c2:
-                    st.write("**القياسات:**")
-                    st.write(
-                        f"طول: {o_len} | عرض: {o_wid} | كتاف: {o_sh}\nردان: {o_slv} | ياخة: {o_col} | بزمة: {o_cuf}"
+                    st.write("**📐 القياسات:**")
+                    st.markdown(
+                        f"""
+                    <span class='measure-tag'>طول: {o_len}</span>
+                    <span class='measure-tag'>عرض: {o_wid}</span>
+                    <span class='measure-tag'>كتف: {o_sh}</span>
+                    <br>
+                    <span class='measure-tag'>ردان: {o_slv}</span>
+                    <span class='measure-tag'>ياخة: {o_col}</span>
+                    <span class='measure-tag'>بزمة: {o_cuf}</span>
+                    """,
+                        unsafe_allow_html=True,
                     )
                 with c3:
-                    st.write("**الحساب:**")
+                    st.write("**💰 الحساب:**")
                     st.write(f"الكلي: {o_total:,.0f} | الواصل: {o_paid:,.0f}")
-                    st.write(f"**المتبقي:** :red[{o_rem:,.0f}]")
+                    st.write(f"**المتبقي:** :red[{o_rem:,.0f} د.ع]")
 
                 st.markdown("---")
                 col_st, col_del = st.columns([3, 1])
                 with col_st:
                     new_st = st.selectbox(
-                        "تغيير الحالة:",
+                        "تغيير حالة الدور:",
                         [
                             "قيد الانتظار",
                             "جارِ التفصيل",
@@ -282,7 +360,7 @@ elif choice == "📋 جدول العمل والدور":
                         ].index(o_status),
                         key=f"st_{o_id}",
                     )
-                    if st.button("تحديث الحالة", key=f"btn_st_{o_id}"):
+                    if st.button("🔄 تحديث الحالة", key=f"btn_st_{o_id}"):
                         conn = get_connection()
                         c = conn.cursor()
                         c.execute(
@@ -294,7 +372,7 @@ elif choice == "📋 جدول العمل والدور":
                         st.rerun()
 
                 with col_del:
-                    if st.button("حذف الطلب ❌", key=f"del_{o_id}"):
+                    if st.button("🗑️ حذف الطلب", key=f"del_{o_id}"):
                         conn = get_connection()
                         c = conn.cursor()
                         c.execute("DELETE FROM orders WHERE id = ?", (o_id,))
@@ -305,12 +383,15 @@ elif choice == "📋 جدول العمل والدور":
                         conn.close()
                         st.rerun()
     else:
-        st.info("لا توجد طلبات مسجلة حالياً.")
+        st.info("💡 لا توجد طلبات مسجلة حتى الآن.")
 
-# --- 6. البحث عن زبون ---
+# --- 7. البحث عن زبون ---
 elif choice == "🔍 البحث عن زبون":
-    st.subheader("🔍 البحث عن قياسات وسجل دفعات زبون")
-    search = st.text_input("أدخل اسم الزبون أو رقم الهاتف:")
+    st.markdown(
+        "<div class='main-header'>🔍 البحث عن قياسات وسجل زبون</div>",
+        unsafe_allow_html=True,
+    )
+    search = st.text_input("🔎 أدخل اسم الزبون أو رقم الهاتف:")
 
     if search:
         conn = get_connection()
@@ -323,32 +404,42 @@ elif choice == "🔍 البحث عن زبون":
 
         if results:
             for r in results:
-                st.success(f"الزبون: {r[1]} ({r[3]}) - الهاتف: {r[2]}")
-                st.write(
-                    f"**القياسات:** طول {r[4]} | عرض {r[5]} | كتاف {r[6]} | ردان {r[7]} | ياخة {r[8]} | بزمة {r[9]}"
+                st.success(f"👤 الزبون: {r[1]} ({r[3]}) - 📞 {r[2]}")
+                st.markdown(
+                    f"""
+                <span class='measure-tag'>طول: {r[4]}</span>
+                <span class='measure-tag'>عرض: {r[5]}</span>
+                <span class='measure-tag'>كتف: {r[6]}</span>
+                <span class='measure-tag'>ردان: {r[7]}</span>
+                <span class='measure-tag'>ياخة: {r[8]}</span>
+                <span class='measure-tag'>بزمة: {r[9]}</span>
+                """,
+                    unsafe_allow_html=True,
                 )
                 st.write(
-                    f"**المالية:** الكلي: {r[11]:,.0f} | الواصل: {r[12]:,.0f} | المتبقي: {r[13]:,.0f}"
+                    f"💵 **المالية:** الكلي: {r[11]:,.0f} | الواصل: {r[12]:,.0f} | المتبقي: :red[{r[13]:,.0f} د.ع]"
                 )
 
-                # عرض سجل الدفعات السابقة
                 c.execute(
                     "SELECT amount, payment_date FROM payments WHERE order_id = ? ORDER BY id DESC",
                     (r[0],),
                 )
                 pays = c.fetchall()
                 if pays:
-                    st.write("**سجل الدفعات المقبوضة:**")
+                    st.caption("🧾 **سجل الدفعات المقبوضة:**")
                     for p in pays:
                         st.caption(f"• تم تسديد {p[0]:,.0f} بتاريخ {p[1]}")
                 st.markdown("---")
         else:
-            st.warning("لم يتم العثور على زبون مطابق.")
+            st.warning("⚠️ لم يتم العثور على زبون مطابق.")
         conn.close()
 
-# --- 7. الإحصائيات والمالية ---
+# --- 8. الإحصائيات والمالية ---
 elif choice == "📊 الإحصائيات والمالية":
-    st.subheader("📊 ملخص الأرباح والديون")
+    st.markdown(
+        "<div class='main-header'>📊 ملخص الأرباح والديون العامة</div>",
+        unsafe_allow_html=True,
+    )
 
     conn = get_connection()
     c = conn.cursor()
@@ -364,7 +455,7 @@ elif choice == "📊 الإحصائيات والمالية":
     total_orders = stats[3] or 0
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("إجمالي الطلبات", total_orders)
-    m2.metric("إجمالي المبالغ", f"{total_income:,.0f}")
-    m3.metric("الواصل المقبوض فعلياً", f"{total_paid:,.0f}")
-    m4.metric("إجمالي الديون المتأخرة", f"{total_due:,.0f}")
+    m1.metric("📋 إجمالي الطلبات", total_orders)
+    m2.metric("💰 إجمالي المبالغ", f"{total_income:,.0f} د.ع")
+    m3.metric("✅ المقبوض فعلياً", f"{total_paid:,.0f} د.ع")
+    m4.metric("⚠️ الديون المتبقية", f"{total_due:,.0f} د.ع")
