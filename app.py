@@ -1,395 +1,755 @@
+import io
+import os
 import sqlite3
 from datetime import datetime, date
+
 import pandas as pd
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
+import arabic_reshaper
+from bidi.algorithm import get_display
 
-# ==========================================
-# 1. إعداد الصفحة والتصميم الجمالي الخشبي والقماشي
-# ==========================================
-st.set_page_config(page_title="صادق الخياط", page_icon="🧵", layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown("""
-    <style>
-    section[data-testid="stSidebar"], button[aria-label="Toggle sidebar"] {
-        display: none !important;
-    }
-    .stApp {
-        background-color: #fcf8f2;
-        direction: rtl;
-        text-align: right;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    .main .block-container {
-        padding-top: 1.5rem !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-        max-width: 100% !important;
-    }
-    /* تصميم التبويبات بمظهر قماشي وخشبي */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #e5d3b3;
-        padding: 8px;
-        border-radius: 12px;
-        border: 2px solid #b89768;
-        display: flex;
-        justify-content: space-around;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 48px;
-        border-radius: 8px;
-        background-color: #d4b886;
-        color: #4a2c11;
-        font-weight: bold;
-        border: 1px solid #a67c52;
-        flex-grow: 1;
-        text-align: center;
-        font-size: 16px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #8b5a2b !important;
-        color: #ffffff !important;
-        border-color: #5c3a17 !important;
-        box-shadow: 0px 3px 6px rgba(0,0,0,0.2);
-    }
-    /* تصميم البطاقات والخانات */
-    div[data-testid="stVerticalBlock"] > div {
-        background-color: #ffffff;
-        border-radius: 14px;
-        border: 1px dashed #b89768;
-        padding: 1.2rem;
-        margin-bottom: 0.8rem;
-        box-shadow: 0 2px 5px rgba(139, 90, 43, 0.05);
-    }
-    .stTextInput input, .stSelectbox select, .stTextArea textarea, .stDateInput input {
-        border-radius: 8px !important;
-        border: 1px solid #cbb292 !important;
-        background-color: #faf6f0 !important;
-    }
-    .stButton > button {
-        background-color: #8b5a2b !important;
-        color: white !important;
-        border-radius: 10px !important;
-        border: 1px solid #5c3a17 !important;
-        font-weight: bold;
-        width: 100%;
-        padding: 0.6rem !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    }
-    .stButton > button:hover {
-        background-color: #6d441f !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==========================================
-# 2. إعدادات قاعدة البيانات والتحديث التلقائي
-# ==========================================
+# =========================
+# إعدادات عامة
+# =========================
 DB_NAME = "tailor_master.db"
-SHOP_NAME = "مشغل صادق الخياط 🧵🪡"
-STATUSES = ["قيد الانتظار", "جاري القص ✂️", "جاري التفصيل 🧵", "جاري الكي 🧺", "جاهز للاستلام 🛍️", "تم التسليم ✅"]
+SHOP_NAME = "صادق الخياط"
+SHOP_PHONE = "07713146637"
 
-def safe_parse_date(date_val):
-    if isinstance(date_val, date):
-        return date_val
-    elif isinstance(date_val, datetime):
-        return date_val.date()
-    elif isinstance(date_val, str) and date_val.strip():
-        try:
-            return datetime.strptime(date_val.strip(), "%Y-%m-%d").date()
-        except ValueError:
-            return date.today()
-    return date.today()
+STATUSES = [
+    "قيد الانتظار",
+    "جارٍ القص",
+    "جارٍ التفصيل",
+    "جارٍ الكي",
+    "جاهز للاستلام",
+    "تم التسليم",
+    "ملغي",
+]
 
+st.set_page_config(
+    page_title=f"{SHOP_NAME} - إدارة الطلبات",
+    page_icon="✂️",
+    layout="wide",
+)
+
+
+# =========================
+# أدوات اللغة العربية
+# =========================
+def rtl(text):
+    if text is None:
+        return ""
+    try:
+        return get_display(arabic_reshaper.reshape(str(text)))
+    except Exception:
+        return str(text)
+
+
+def get_font(size):
+    paths = [
+        "assets/fonts/NotoNaskhArabic-Regular.ttf",
+        "assets/fonts/Amiri-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf",
+        "C:/Windows/Fonts/tahoma.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
+# =========================
+# قاعدة البيانات
+# =========================
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_columns(conn, table):
+    return [row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+
+def ensure_column(conn, table, column, definition):
+    if column not in get_columns(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
 
 def init_db():
     conn = get_connection()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_name TEXT DEFAULT '',
-            phone TEXT DEFAULT '',
-            item_type TEXT DEFAULT '',
-            status TEXT DEFAULT 'قيد الانتظار',
-            notes TEXT DEFAULT '',
-            sizes TEXT DEFAULT '',
-            delivery_date TEXT DEFAULT '',
-            total_price REAL DEFAULT 0,
-            paid_amount REAL DEFAULT 0,
-            remaining_amount REAL DEFAULT 0,
-            created_at TEXT DEFAULT ''
+            name TEXT NOT NULL,
+            phone TEXT,
+            created_at TEXT
         )
     """)
-    conn.commit()
 
-    c.execute("PRAGMA table_info(orders)")
-    columns = [col[1] for col in c.fetchall()]
-    
-    missing_columns = {
-        'sizes': "TEXT DEFAULT ''",
-        'remaining_amount': 'REAL DEFAULT 0',
-        'paid_amount': 'REAL DEFAULT 0',
-        'total_price': 'REAL DEFAULT 0',
-        'delivery_date': "TEXT DEFAULT ''",
-        'item_type': "TEXT DEFAULT ''",
-        'status': "TEXT DEFAULT 'قيد الانتظار'",
-        'notes': "TEXT DEFAULT ''",
-        'phone': "TEXT DEFAULT ''",
-        'customer_name': "TEXT DEFAULT ''"
-    }
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER,
+            name TEXT NOT NULL,
+            phone TEXT,
+            item_type TEXT,
+            length REAL DEFAULT 0,
+            width REAL DEFAULT 0,
+            shoulder REAL DEFAULT 0,
+            sleeve REAL DEFAULT 0,
+            collar REAL DEFAULT 0,
+            cuff REAL DEFAULT 0,
+            notes TEXT,
+            total_price REAL DEFAULT 0,
+            advance_paid REAL DEFAULT 0,
+            remaining_price REAL DEFAULT 0,
+            status TEXT DEFAULT 'قيد الانتظار',
+            created_at TEXT,
+            delivery_date TEXT
+        )
+    """)
 
-    for col_name, col_type in missing_columns.items():
-        if col_name not in columns:
-            try:
-                c.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}")
-            except Exception:
-                pass
+    # دعم قواعد البيانات القديمة
+    ensure_column(conn, "orders", "customer_id", "INTEGER")
+    ensure_column(conn, "orders", "delivery_date", "TEXT")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER,
+            amount REAL NOT NULL,
+            payment_date TEXT,
+            notes TEXT
+        )
+    """)
+
+    ensure_column(conn, "payments", "notes", "TEXT")
 
     conn.commit()
     conn.close()
+
 
 init_db()
 
-# ==========================================
-# 3. الهيدر والواجهة الرئيسية
-# ==========================================
-st.markdown(f"<h1 style='text-align: center; color: #5c3a17; margin-bottom: 0px;'>🪵 {SHOP_NAME} 🪵</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #8b5a2b; font-size: 15px; font-weight: bold;'>نظام إدارة تفصيل الخياطة والقياسات والحسابات</p>", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🪵 لوحة التحكم",
-    "➕ إضافة طلب",
-    "🧵 إدارة الطلبات",
-    "💵 الديون",
-    "🔍 البحث",
-    "💾 النسخ الاحتياطي"
-])
-
-# ------------------------------------------
-# التبويب الأول: لوحة التحكم
-# ------------------------------------------
-with tab1:
+# =========================
+# دوال البيانات
+# =========================
+def get_or_create_customer(name, phone):
     conn = get_connection()
-    df_orders = pd.read_sql_query("SELECT * FROM orders", conn)
+    phone = (phone or "").strip()
+    name = name.strip()
+
+    customer = None
+    if phone:
+        customer = conn.execute(
+            "SELECT * FROM customers WHERE phone = ? ORDER BY id DESC LIMIT 1",
+            (phone,)
+        ).fetchone()
+
+    if customer is None:
+        customer = conn.execute(
+            "SELECT * FROM customers WHERE name = ? ORDER BY id DESC LIMIT 1",
+            (name,)
+        ).fetchone()
+
+    if customer:
+        customer_id = customer["id"]
+        conn.execute(
+            "UPDATE customers SET name = ?, phone = ? WHERE id = ?",
+            (name, phone, customer_id)
+        )
+    else:
+        customer_id = conn.execute(
+            "INSERT INTO customers (name, phone, created_at) VALUES (?, ?, ?)",
+            (name, phone, datetime.now().strftime("%Y-%m-%d %H:%M"))
+        ).lastrowid
+
+    conn.commit()
     conn.close()
+    return customer_id
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("📦 إجمالي الطلبات", len(df_orders))
-    
-    pending_count = len(df_orders[df_orders['status'].astype(str).str.contains('قيد الانتظار|القص|التفصيل')]) if ('status' in df_orders.columns and not df_orders.empty) else 0
-    ready_count = len(df_orders[df_orders['status'].astype(str).str.contains('جاهز')]) if ('status' in df_orders.columns and not df_orders.empty) else 0
-    
-    col2.metric("⏳ قيد العمل", pending_count)
-    col3.metric("🛍️ جاهز للاستلام", ready_count)
 
-# ------------------------------------------
-# التبويب الثاني: إضافة طلب + القياسات
-# ------------------------------------------
-with tab2:
-    st.subheader("➕ إضافة طلب جديد وتفاصيل القياس")
-    with st.form("add_order_form", clear_on_submit=True):
-        st.markdown("##### 👤 بيانات الزبون")
-        c_name = st.text_input("اسم الزبون*")
-        c_phone = st.text_input("رقم الهاتف")
-        item_type = st.selectbox("نوع القماش / القطعة", ["دشداشة رجالي", "دشداشة ولادي", "بنطال", "قميص", "بدلة", "آخر"])
-        status = st.selectbox("حالة الطلب Initial", STATUSES)
-        
-        st.markdown("##### 📐 جدول قياسات الخياطة (سم)")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        size_length = col_s1.text_input("الطول")
-        size_shoulder = col_s2.text_input("الكتف")
-        size_sleeve = col_s3.text_input("الردن / الكم")
-        
-        col_s4, col_s5, col_s6 = st.columns(3)
-        size_chest = col_s4.text_input("الصدر")
-        size_neck = col_s5.text_input("الرقبة")
-        size_waist = col_s6.text_input("الخصر / العرض")
+def create_order(data):
+    customer_id = get_or_create_customer(data["name"], data["phone"])
+    remaining = max(0.0, data["total_price"] - data["advance_paid"])
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        st.markdown("##### 💰 الحساب المالي والحجز")
-        delivery_d = st.date_input("تاريخ التسليم المتوقع", date.today())
-        total_p = st.number_input("المبلغ الإجمالي (د.ع)", min_value=0.0, step=1000.0)
-        paid_p = st.number_input("المبلغ المدفوع عربون (د.ع)", min_value=0.0, step=1000.0)
-        notes = st.text_area("ملاحظات إضافية على الخياطة")
+    conn = get_connection()
+    order_id = conn.execute("""
+        INSERT INTO orders (
+            customer_id, name, phone, item_type,
+            length, width, shoulder, sleeve, collar, cuff,
+            notes, total_price, advance_paid, remaining_price,
+            status, created_at, delivery_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        customer_id,
+        data["name"].strip(),
+        (data["phone"] or "").strip(),
+        data["item_type"],
+        data["length"],
+        data["width"],
+        data["shoulder"],
+        data["sleeve"],
+        data["collar"],
+        data["cuff"],
+        data["notes"],
+        data["total_price"],
+        data["advance_paid"],
+        remaining,
+        "قيد الانتظار",
+        now,
+        str(data["delivery_date"]),
+    )).lastrowid
 
-        submitted = st.form_submit_button("💾 حفظ الطلب والقياسات")
-        if submitted:
-            if c_name.strip():
-                try:
-                    conn = get_connection()
-                    c = conn.cursor()
-                    rem_p = total_p - paid_p
-                    
-                    sizes_text = f"طول: {size_length} | كتف: {size_shoulder} | ردن: {size_sleeve} | صدر: {size_chest} | رقبة: {size_neck} | خصر: {size_waist}"
-                    
-                    c.execute("""
-                        INSERT INTO orders (customer_name, phone, item_type, status, notes, sizes, delivery_date, total_price, paid_amount, remaining_amount, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (c_name, c_phone, item_type, status, notes, sizes_text, str(delivery_d), total_p, paid_p, rem_p, str(date.today())))
-                    conn.commit()
-                    conn.close()
-                    st.success("✅ تم حفظ الطلب والقياسات بنجاح!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"حدث خطأ أثناء الحفظ: {e}")
-            else:
-                st.warning("⚠️ يرجى كتابة اسم الزبون.")
+    if data["advance_paid"] > 0:
+        conn.execute(
+            "INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
+            (order_id, data["advance_paid"], now, "عربون عند تسجيل الطلب")
+        )
 
-# ------------------------------------------
-# التبويب الثالث: إدارة الطلبات والتعديل والوصل
-# ------------------------------------------
-with tab3:
-    st.subheader("🧵 قائمة الطلبات الحالية")
+    conn.commit()
+    conn.close()
+    return order_id, remaining
+
+
+def get_orders():
     conn = get_connection()
     df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
     conn.close()
+    return df
 
-    if not df.empty:
-        for idx, row in df.iterrows():
-            order_id = row.get('id', idx)
-            cust_name = row.get('customer_name', 'غير محدد')
-            i_type = row.get('item_type', 'غير محدد')
-            st_val = row.get('status', 'قيد الانتظار')
-            phone_val = row.get('phone', '-')
-            d_val = safe_parse_date(row.get('delivery_date', ''))
-            tot_p = row.get('total_price', 0.0)
-            p_p = row.get('paid_amount', 0.0)
-            rem_p = row.get('remaining_amount', 0.0)
-            nts = row.get('notes', '')
-            szs = row.get('sizes', '')
 
-            with st.expander(f"📦 طلب #{order_id} | الزبون: {cust_name} | {i_type} [{st_val}]"):
-                st.write(f"📞 **رقم الهاتف:** {phone_val}")
-                st.info(f"📐 **القياسات:** {szs if szs else 'لم تُسجل قياسات'}")
-                st.write(f"📅 **تاريخ الاستلام:** {d_val}")
-                st.write(f"💵 **الإجمالي:** {tot_p:,} | **العربون:** {p_p:,} | **المتبقي:** {rem_p:,} د.ع")
-                st.write(f"📝 **الملاحظات:** {nts if nts else '-'}")
-                
-                col_b1, col_b2, col_b3 = st.columns(3)
-                
-                # تعديل الطلب
-                with col_b1:
-                    with st.popover("✏️ تعديل الطلب"):
-                        with st.form(key=f"edit_form_{order_id}"):
-                            new_status = st.selectbox("الحالة الحالية", STATUSES, index=0)
-                            new_sizes = st.text_area("تعديل القياسات", value=str(szs))
-                            new_total = st.number_input("المبلغ الإجمالي", value=float(tot_p), step=1000.0)
-                            new_paid = st.number_input("المبلغ المدفوع", value=float(p_p), step=1000.0)
-                            new_notes = st.text_area("تعديل الملاحظات", value=str(nts))
-                            
-                            if st.form_submit_button("حفظ التحديثات"):
-                                conn = get_connection()
-                                c = conn.cursor()
-                                new_rem = new_total - new_paid
-                                c.execute("""
-                                    UPDATE orders 
-                                    SET status=?, sizes=?, total_price=?, paid_amount=?, remaining_amount=?, notes=?
-                                    WHERE id=?
-                                """, (new_status, new_sizes, new_total, new_paid, new_rem, new_notes, order_id))
-                                conn.commit()
-                                conn.close()
-                                st.success("تم التعديل بنجاح!")
-                                st.rerun()
-
-                # تنزيل الوصل
-                with col_b2:
-                    receipt_text = f"""
-================================
-         وصل خياطة الزبون
-         مشغل صادق الخياط 🧵
-================================
-رقم الطلب: #{order_id}
-اسم الزبون: {cust_name}
-رقم الهاتف: {phone_val}
-نوع القطعة: {i_type}
-التاريخ: {d_val}
---------------------------------
-القياسات:
-{szs}
---------------------------------
-المبلغ الكلي: {tot_p} د.ع
-المبلغ المدفوع: {p_p} د.ع
-المبلغ المتبقي: {rem_p} د.ع
---------------------------------
-شكراً لزيارتكم مشغل صادق الخياط!
-================================
-"""
-                    st.download_button(
-                        label="📄 تنزيل الوصل",
-                        data=receipt_text,
-                        file_name=f"receipt_order_{order_id}.txt",
-                        mime="text/plain",
-                        key=f"dl_rec_{order_id}"
-                    )
-
-                # حذف الطلب
-                with col_b3:
-                    if st.button("🗑️ حذف الطلب", key=f"del_{order_id}"):
-                        conn = get_connection()
-                        c = conn.cursor()
-                        c.execute("DELETE FROM orders WHERE id=?", (order_id,))
-                        conn.commit()
-                        conn.close()
-                        st.warning("تم حذف الطلب.")
-                        st.rerun()
-    else:
-        st.info("لا توجد طلبات مسجلة حالياً.")
-
-# ------------------------------------------
-# التبويب الرابع: الدفعات والديون
-# ------------------------------------------
-with tab4:
-    st.subheader("💵 قائمة الديون والذمم المتبقية")
+def get_order(order_id):
     conn = get_connection()
-    df_all = pd.read_sql_query("SELECT * FROM orders", conn)
+    row = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def update_status(order_id, status):
+    conn = get_connection()
+    conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+    conn.commit()
     conn.close()
 
-    if not df_all.empty and 'remaining_amount' in df_all.columns:
-        df_debts = df_all[df_all['remaining_amount'] > 0]
-        if not df_debts.empty:
-            show_df = df_debts[['customer_name', 'phone', 'item_type', 'remaining_amount']].rename(columns={
-                'customer_name': 'اسم الزبون',
-                'phone': 'رقم الهاتف',
-                'item_type': 'نوع القطعة',
-                'remaining_amount': 'المبلغ المتبقي (د.ع)'
-            })
-            st.dataframe(show_df, use_container_width=True)
+
+def delete_order(order_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM payments WHERE order_id = ?", (order_id,))
+    conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+
+
+def add_payment(order_id, amount, notes):
+    order = get_order(order_id)
+    if order is None:
+        return False, "الطلب غير موجود."
+
+    amount = float(amount)
+    remaining = float(order["remaining_price"] or 0)
+
+    if amount <= 0:
+        return False, "أدخل مبلغًا أكبر من صفر."
+
+    if amount > remaining:
+        return False, "المبلغ أكبر من المبلغ المتبقي."
+
+    new_paid = float(order["advance_paid"] or 0) + amount
+    new_remaining = max(0.0, float(order["total_price"] or 0) - new_paid)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    conn = get_connection()
+    conn.execute(
+        "UPDATE orders SET advance_paid = ?, remaining_price = ? WHERE id = ?",
+        (new_paid, new_remaining, order_id)
+    )
+    conn.execute(
+        "INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
+        (order_id, amount, now, notes or "دفعة جديدة")
+    )
+    conn.commit()
+    conn.close()
+    return True, "تم تسجيل الدفعة بنجاح."
+
+
+def get_payments(order_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC",
+        (order_id,)
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+# =========================
+# إنشاء الوصل كصورة PNG
+# =========================
+def generate_receipt(order):
+    width, height = 1100, 1550
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    title_font = get_font(52)
+    big_font = get_font(38)
+    body_font = get_font(29)
+    small_font = get_font(24)
+
+    draw.rectangle((20, 20, width - 20, height - 20), outline=(35, 55, 75), width=5)
+    draw.rectangle((25, 25, width - 25, 220), fill=(35, 55, 75))
+
+    def right(text, y, font, fill=(20, 20, 20), margin=70):
+        shaped = rtl(text)
+        box = draw.textbbox((0, 0), shaped, font=font)
+        x = width - margin - (box[2] - box[0])
+        draw.text((x, y), shaped, font=font, fill=fill)
+
+    right(SHOP_NAME, 55, title_font, "white")
+    right(f"الهاتف: {SHOP_PHONE}", 135, big_font, (230, 235, 240))
+
+    y = 270
+    right("وصل استلام طلب", y, title_font)
+    y += 95
+
+    info = [
+        f"رقم الطلب: #{order['id']}",
+        f"تاريخ التسجيل: {order['created_at'] or ''}",
+        f"تاريخ التسليم: {order['delivery_date'] or 'غير محدد'}",
+        f"اسم الزبون: {order['name']}",
+        f"رقم الهاتف: {order['phone'] or 'غير محدد'}",
+        f"نوع التفصيل: {order['item_type'] or ''}",
+    ]
+
+    for line in info:
+        right(line, y, body_font)
+        y += 58
+
+    draw.line((70, y, width - 70, y), fill=(160, 160, 160), width=2)
+    y += 30
+    right("القياسات (سم)", y, big_font)
+    y += 65
+
+    measurements = [
+        f"الطول: {order['length']}",
+        f"العرض: {order['width']}",
+        f"الكتاف: {order['shoulder']}",
+        f"طول الردان: {order['sleeve']}",
+        f"الياخة: {order['collar']}",
+        f"البزمة: {order['cuff']}",
+    ]
+
+    for line in measurements:
+        right(line, y, body_font)
+        y += 50
+
+    draw.line((70, y, width - 70, y), fill=(160, 160, 160), width=2)
+    y += 30
+    right("الحساب", y, big_font)
+    y += 65
+
+    finance = [
+        f"السعر الكلي: {float(order['total_price'] or 0):,.0f} د.ع",
+        f"المبلغ المدفوع: {float(order['advance_paid'] or 0):,.0f} د.ع",
+        f"المبلغ المتبقي: {float(order['remaining_price'] or 0):,.0f} د.ع",
+        f"الحالة: {order['status'] or ''}",
+    ]
+
+    for line in finance:
+        right(line, y, body_font)
+        y += 58
+
+    draw.line((70, y, width - 70, y), fill=(160, 160, 160), width=2)
+    y += 30
+    right("ملاحظات", y, big_font)
+    y += 60
+
+    notes = order["notes"] or "لا توجد ملاحظات"
+    # قص الملاحظات الطويلة إلى عدة أسطر
+    words = str(notes).split()
+    lines, current = [], ""
+    for word in words:
+        test = (current + " " + word).strip()
+        if len(test) > 55:
+            if current:
+                lines.append(current)
+            current = word
         else:
-            st.success("🎉 ممتاز! لا توجد ديون متبقية على الزبائن.")
+            current = test
+    if current:
+        lines.append(current)
+
+    for line in lines[:5]:
+        right(line, y, small_font)
+        y += 42
+
+    footer_y = height - 130
+    draw.line((70, footer_y - 25, width - 70, footer_y - 25), fill=(160, 160, 160), width=2)
+    right("شكراً لتعاملكم معنا", footer_y, big_font)
+    right(SHOP_NAME, footer_y + 55, small_font)
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# =========================
+# الواجهة
+# =========================
+st.title("✂️ صادق الخياط")
+st.caption("نظام إدارة الطلبات والقياسات والحسابات")
+
+menu = st.sidebar.radio(
+    "القائمة الرئيسية",
+    [
+        "🏠 لوحة التحكم",
+        "➕ إضافة طلب",
+        "📋 إدارة الطلبات",
+        "💵 الدفعات والديون",
+        "👥 الزبائن",
+        "🔍 البحث",
+        "📊 الإحصائيات",
+        "💾 النسخ الاحتياطي",
+    ],
+)
+
+
+# لوحة التحكم
+if menu == "🏠 لوحة التحكم":
+    df = get_orders()
+
+    if df.empty:
+        st.info("لا توجد طلبات مسجلة حتى الآن.")
     else:
-        st.success("🎉 لا توجد ديون متبقية.")
+        total_orders = len(df)
+        total_price = df["total_price"].fillna(0).sum()
+        total_paid = df["advance_paid"].fillna(0).sum()
+        total_due = df["remaining_price"].fillna(0).sum()
 
-# ------------------------------------------
-# التبويب الخامس: البحث
-# ------------------------------------------
-with tab5:
-    st.subheader("🔍 البحث السريع")
-    search_query = st.text_input("أدخل اسم الزبون أو رقم الهاتف للبحث:")
-    if search_query:
-        conn = get_connection()
-        df = pd.read_sql_query("SELECT * FROM orders WHERE customer_name LIKE ? OR phone LIKE ?", conn, params=(f"%{search_query}%", f"%{search_query}%"))
-        conn.close()
-        if not df.empty:
-            st.dataframe(df, use_container_width=True)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("إجمالي الطلبات", total_orders)
+        c2.metric("إجمالي المبيعات", f"{total_price:,.0f} د.ع")
+        c3.metric("المقبوض", f"{total_paid:,.0f} د.ع")
+        c4.metric("المتبقي", f"{total_due:,.0f} د.ع")
+
+        st.subheader("آخر الطلبات")
+        show = df[["id", "name", "phone", "item_type", "status", "delivery_date", "remaining_price"]].copy()
+        show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي"]
+        st.dataframe(show, use_container_width=True, hide_index=True)
+
+
+# إضافة طلب
+elif menu == "➕ إضافة طلب":
+    st.subheader("تسجيل طلب جديد")
+
+    with st.form("new_order", clear_on_submit=True):
+        st.markdown("### معلومات الزبون")
+        c1, c2 = st.columns(2)
+        name = c1.text_input("اسم الزبون *")
+        phone = c2.text_input("رقم الهاتف")
+
+        st.markdown("### تفاصيل الطلب")
+        c1, c2 = st.columns(2)
+        item_type = c1.selectbox(
+            "نوع التفصيل",
+            ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "تفصيل آخر"]
+        )
+        delivery_date = c2.date_input("تاريخ التسليم المتوقع", value=date.today())
+
+        st.markdown("### القياسات بالسنتيمتر")
+        a, b, c = st.columns(3)
+        length = a.number_input("الطول", min_value=0.0, step=0.5)
+        width = a.number_input("العرض", min_value=0.0, step=0.5)
+        shoulder = b.number_input("عرض الكتاف", min_value=0.0, step=0.5)
+        sleeve = b.number_input("طول الردان", min_value=0.0, step=0.5)
+        collar = c.number_input("الياخة", min_value=0.0, step=0.5)
+        cuff = c.number_input("البزمة", min_value=0.0, step=0.5)
+
+        notes = st.text_area("ملاحظات", placeholder="القماش، اللون، الموديل...")
+
+        st.markdown("### الحساب")
+        p1, p2 = st.columns(2)
+        total_price = p1.number_input("السعر الكلي (د.ع)", min_value=0.0, step=1000.0)
+        advance_paid = p2.number_input("المبلغ المدفوع (د.ع)", min_value=0.0, step=1000.0)
+
+        submitted = st.form_submit_button("💾 حفظ الطلب", use_container_width=True)
+
+        if submitted:
+            if not name.strip():
+                st.error("يرجى إدخال اسم الزبون.")
+            elif advance_paid > total_price:
+                st.error("المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الكلي.")
+            else:
+                order_id, remaining = create_order({
+                    "name": name,
+                    "phone": phone,
+                    "item_type": item_type,
+                    "length": length,
+                    "width": width,
+                    "shoulder": shoulder,
+                    "sleeve": sleeve,
+                    "collar": collar,
+                    "cuff": cuff,
+                    "notes": notes,
+                    "total_price": total_price,
+                    "advance_paid": advance_paid,
+                    "delivery_date": delivery_date,
+                })
+                st.success(f"تم حفظ الطلب رقم #{order_id} بنجاح.")
+                st.info(f"المبلغ المتبقي: {remaining:,.0f} د.ع")
+
+
+# إدارة الطلبات
+elif menu == "📋 إدارة الطلبات":
+    st.subheader("إدارة الطلبات")
+    df = get_orders()
+
+    if df.empty:
+        st.info("لا توجد طلبات.")
+    else:
+        selected_statuses = st.multiselect("فلترة حسب الحالة", STATUSES)
+        if selected_statuses:
+            df = df[df["status"].isin(selected_statuses)]
+
+        st.caption(f"عدد الطلبات: {len(df)}")
+
+        for _, row in df.iterrows():
+            order_id = int(row["id"])
+            with st.expander(
+                f"#{order_id} | {row['name']} | {row['item_type']} | {row['status']}"
+            ):
+                a, b, c = st.columns(3)
+
+                with a:
+                    st.write(f"**الزبون:** {row['name']}")
+                    st.write(f"**الهاتف:** {row['phone'] or 'غير محدد'}")
+                    st.write(f"**التسجيل:** {row['created_at']}")
+                    st.write(f"**التسليم:** {row['delivery_date'] or 'غير محدد'}")
+
+                with b:
+                    st.write("**القياسات**")
+                    st.write(f"الطول: {row['length']}")
+                    st.write(f"العرض: {row['width']}")
+                    st.write(f"الكتاف: {row['shoulder']}")
+                    st.write(f"الردان: {row['sleeve']}")
+                    st.write(f"الياخة: {row['collar']}")
+                    st.write(f"البزمة: {row['cuff']}")
+
+                with c:
+                    st.write(f"**السعر:** {float(row['total_price'] or 0):,.0f} د.ع")
+                    st.write(f"**المدفوع:** {float(row['advance_paid'] or 0):,.0f} د.ع")
+                    st.write(f"**المتبقي:** {float(row['remaining_price'] or 0):,.0f} د.ع")
+
+                st.write(f"**الملاحظات:** {row['notes'] or 'لا توجد ملاحظات'}")
+
+                order = get_order(order_id)
+                current_status = order["status"] if order else "قيد الانتظار"
+                status_index = STATUSES.index(current_status) if current_status in STATUSES else 0
+
+                new_status = st.selectbox(
+                    "حالة الطلب",
+                    STATUSES,
+                    index=status_index,
+                    key=f"status_{order_id}",
+                )
+
+                x1, x2, x3 = st.columns(3)
+
+                if x1.button("💾 تحديث الحالة", key=f"update_{order_id}"):
+                    update_status(order_id, new_status)
+                    st.success("تم تحديث الحالة.")
+                    st.rerun()
+
+                receipt = generate_receipt(order)
+                x2.download_button(
+                    "🖼️ تنزيل الوصل PNG",
+                    data=receipt,
+                    file_name=f"receipt_{order_id}.png",
+                    mime="image/png",
+                    key=f"receipt_{order_id}",
+                    use_container_width=True,
+                )
+
+                if x3.button("🗑️ حذف الطلب", key=f"delete_{order_id}"):
+                    delete_order(order_id)
+                    st.success("تم حذف الطلب.")
+                    st.rerun()
+
+                payments = get_payments(order_id)
+                if payments:
+                    st.write("**سجل الدفعات:**")
+                    payment_df = pd.DataFrame(
+                        [dict(p) for p in payments]
+                    )[["amount", "payment_date", "notes"]]
+                    payment_df.columns = ["المبلغ", "التاريخ", "ملاحظات"]
+                    st.dataframe(payment_df, use_container_width=True, hide_index=True)
+
+
+# الدفعات والديون
+elif menu == "💵 الدفعات والديون":
+    st.subheader("الدفعات والديون")
+    df = get_orders()
+
+    if df.empty:
+        st.info("لا توجد بيانات.")
+    else:
+        debtors = df[df["remaining_price"].fillna(0) > 0]
+
+        if debtors.empty:
+            st.success("🎉 لا توجد مبالغ متبقية.")
         else:
-            st.warning("لم يتم العثور على أي نتائج.")
+            total_debt = debtors["remaining_price"].sum()
+            st.metric("إجمالي الديون", f"{total_debt:,.0f} د.ع")
 
-# ------------------------------------------
-# التبويب السادس: النسخ الاحتياطي لقاعدة البيانات
-# ------------------------------------------
-with tab6:
-    st.subheader("💾 النسخ الاحتياطي وحفظ البيانات")
-    st.write("يمكنك تنزيل نسخة احتياطية من قاعدة البيانات بالكامل لحفظها على جهازك وتفادي ضياع البيانات:")
-    
-    try:
-        with open(DB_NAME, "rb") as fp:
+            for _, row in debtors.iterrows():
+                order_id = int(row["id"])
+                with st.expander(
+                    f"#{order_id} | {row['name']} | المتبقي {float(row['remaining_price']):,.0f} د.ع"
+                ):
+                    amount = st.number_input(
+                        "المبلغ المستلم",
+                        min_value=0.0,
+                        max_value=float(row["remaining_price"]),
+                        step=1000.0,
+                        key=f"amount_{order_id}",
+                    )
+                    note = st.text_input(
+                        "ملاحظات",
+                        value="دفعة جديدة",
+                        key=f"note_{order_id}",
+                    )
+                    if st.button("💵 تسجيل الدفعة", key=f"pay_{order_id}"):
+                        ok, message = add_payment(order_id, amount, note)
+                        if ok:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+
+
+# الزبائن
+elif menu == "👥 الزبائن":
+    st.subheader("قاعدة بيانات الزبائن")
+    conn = get_connection()
+    customers = pd.read_sql_query(
+        "SELECT id, name, phone, created_at FROM customers ORDER BY id DESC",
+        conn
+    )
+    conn.close()
+
+    if customers.empty:
+        st.info("لا توجد بيانات زبائن.")
+    else:
+        view = customers.copy()
+        view.columns = ["رقم", "الاسم", "الهاتف", "تاريخ الإضافة"]
+        st.dataframe(view, use_container_width=True, hide_index=True)
+
+        customer_id = st.selectbox(
+            "اختر زبونًا لعرض طلباته",
+            customers["id"].tolist(),
+            format_func=lambda x: (
+                f"{customers.loc[customers['id'] == x, 'name'].iloc[0]}"
+                f" - {customers.loc[customers['id'] == x, 'phone'].iloc[0]}"
+            ),
+        )
+
+        conn = get_connection()
+        orders = pd.read_sql_query(
+            "SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC",
+            conn,
+            params=(int(customer_id),),
+        )
+        conn.close()
+
+        if orders.empty:
+            st.info("لا توجد طلبات لهذا الزبون.")
+        else:
+            st.dataframe(orders, use_container_width=True, hide_index=True)
+
+
+# البحث
+elif menu == "🔍 البحث":
+    st.subheader("البحث")
+    search = st.text_input("ابحث بالاسم أو رقم الهاتف أو رقم الطلب")
+
+    if search.strip():
+        conn = get_connection()
+        results = pd.read_sql_query(
+            """
+            SELECT * FROM orders
+            WHERE name LIKE ?
+               OR phone LIKE ?
+               OR CAST(id AS TEXT) LIKE ?
+            ORDER BY id DESC
+            """,
+            conn,
+            params=(f"%{search}%", f"%{search}%", f"%{search}%"),
+        )
+        conn.close()
+
+        if results.empty:
+            st.warning("لم يتم العثور على نتائج.")
+        else:
+            st.success(f"تم العثور على {len(results)} نتيجة.")
+            st.dataframe(results, use_container_width=True, hide_index=True)
+
+
+# الإحصائيات
+elif menu == "📊 الإحصائيات":
+    st.subheader("الإحصائيات")
+    df = get_orders()
+
+    if df.empty:
+        st.info("لا توجد بيانات للإحصائيات.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("عدد الطلبات", len(df))
+        c2.metric("إجمالي المبيعات", f"{df['total_price'].fillna(0).sum():,.0f} د.ع")
+        c3.metric("المقبوض", f"{df['advance_paid'].fillna(0).sum():,.0f} د.ع")
+        c4.metric("الديون", f"{df['remaining_price'].fillna(0).sum():,.0f} د.ع")
+
+        st.subheader("الطلبات حسب الحالة")
+        counts = df["status"].value_counts()
+        st.bar_chart(counts)
+
+
+# النسخ الاحتياطي
+elif menu == "💾 النسخ الاحتياطي":
+    st.subheader("النسخ الاحتياطي")
+
+    if os.path.exists(DB_NAME):
+        with open(DB_NAME, "rb") as f:
             st.download_button(
-                label="📥 تنزيل نسخة احتياطية من قاعدة البيانات (tailor_master.db)",
-                data=fp,
-                file_name=f"backup_tailor_{date.today()}.db",
-                mime="application/octet-stream"
+                "⬇️ تنزيل نسخة احتياطية",
+                data=f.read(),
+                file_name=f"tailor_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+                mime="application/octet-stream",
+                use_container_width=True,
             )
-    except Exception as e:
-        st.error("لم يتم العثور على ملف قاعدة البيانات بعد.")
+
+    st.divider()
+    st.subheader("استعادة نسخة احتياطية")
+    backup = st.file_uploader("اختر ملف النسخة الاحتياطية", type=["db"])
+
+    if backup is not None:
+        confirm = st.checkbox("أفهم أن البيانات الحالية سيتم استبدالها.")
+
+        if confirm and st.button("♻️ استعادة النسخة"):
+            with open(DB_NAME, "wb") as f:
+                f.write(backup.getbuffer())
+
+            init_db()
+            st.success("تمت استعادة النسخة الاحتياطية بنجاح.")
+            st.rerun()
