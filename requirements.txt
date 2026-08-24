@@ -1,6 +1,6 @@
-streamlit==1.28.0
-pandas==2.0.3
-Pillow==10.1.0
-arabic-reshaper==2.1.4
-python-bidi==0.4.2
-matplotlib==3.7.2
+streamlit>=1.28.0,<2.0
+pandas>=2.0.0,<2.1
+Pillow>=10.0.0,<11.0
+arabic-reshaper>=2.1.0,<3.0
+python-bidi>=0.4.0,<0.5
+matplotlib>=3.7.0,<3.8
