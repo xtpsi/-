@@ -1,4 +1,4 @@
-
+```python
 import io
 import os
 import sqlite3
@@ -1542,4 +1542,3 @@ elif menu == "💾 النسخ الاحتياطي":
                 )
 
                 st.rerun()
-```
