@@ -1,8 +1,9 @@
 import sqlite3
+from datetime import datetime
 import streamlit as st
 
-# --- 1. إدارة قاعدة البيانات ---
-DB_NAME = "tailor_full.db"
+# --- 1. إعداد قاعدة البيانات ---
+DB_NAME = "tailor_advanced.db"
 
 
 def get_connection():
@@ -12,6 +13,7 @@ def get_connection():
 def init_db():
     conn = get_connection()
     c = conn.cursor()
+    # جدول الطلبات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS orders (
@@ -19,17 +21,25 @@ def init_db():
             name TEXT,
             phone TEXT,
             item_type TEXT,
-            length REAL,
-            width REAL,
-            shoulder REAL,
-            sleeve REAL,
-            collar REAL,
-            cuff REAL,
+            length REAL, width REAL, shoulder REAL, sleeve REAL, collar REAL, cuff REAL,
             notes TEXT,
             total_price REAL,
             advance_paid REAL,
             remaining_price REAL,
-            status TEXT
+            status TEXT,
+            created_at TEXT
+        )
+    """
+    )
+    # جدول سجل الدفعات
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER,
+            amount REAL,
+            payment_date TEXT,
+            FOREIGN KEY (order_id) REFERENCES orders (id)
         )
     """
     )
@@ -39,29 +49,32 @@ def init_db():
 
 init_db()
 
-# --- 2. إعداد الواجهة ---
+# --- 2. الواجهة الرئيسية ---
 st.set_page_config(
-    page_title="حياطة مهدي و اولاد", page_icon="✂️", layout="wide"
+    page_title="خياطة الفيحاء - إدارة الطلبات والمحاسبة",
+    page_icon="✂️",
+    layout="wide",
 )
-st.title("✂️ خياطة مهدي و اولاده")
+st.title("✂️ نظام إدارة الخياطة والمحاسبة الذكي")
 
 menu = [
     "📝 إضافة طلب جديد",
     "📋 جدول العمل والدور",
+    "💵 تسديد الديون والحسابات",
     "🔍 البحث عن زبون",
     "📊 الإحصائيات والمالية",
 ]
 choice = st.sidebar.radio("القائمة الرئيسية:", menu)
 
-# --- 3. إضافة طلب جديد مع المحاسبة ---
+# --- 3. إضافة طلب جديد ---
 if choice == "📝 إضافة طلب جديد":
     st.subheader("تسجيل طلب وقياسات وحساب جديد")
 
-    with st.form("full_order_form", clear_on_submit=True):
-        col_cust1, col_cust2 = st.columns(2)
-        with col_cust1:
+    with st.form("add_order_form", clear_on_submit=True):
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
             name = st.text_input("اسم الزبون *")
-        with col_cust2:
+        with col_c2:
             phone = st.text_input("رقم الهاتف")
 
         item_type = st.selectbox(
@@ -80,7 +93,7 @@ if choice == "📝 إضافة طلب جديد":
             collar = st.number_input("الياخة", min_value=0.0, step=0.5)
             cuff = st.number_input("البزمة", min_value=0.0, step=0.5)
 
-        notes = st.text_area("ملاحظات تفصيلية (نوع القماش، اللون، النقشة...)")
+        notes = st.text_area("ملاحظات (نوع القماش، اللون، الموديل)")
 
         st.markdown("---")
         st.markdown("**💰 التفاصيل المالية:**")
@@ -89,7 +102,7 @@ if choice == "📝 إضافة طلب جديد":
             total_price = st.number_input("السعر الكلي", min_value=0.0, step=1.0)
         with col_p2:
             advance_paid = st.number_input(
-                "العربون (المبلغ المدفوع)", min_value=0.0, step=1.0
+                "العربون المدفوع", min_value=0.0, step=1.0
             )
 
         submit = st.form_submit_button("حفظ الطلب والحساب")
@@ -99,14 +112,15 @@ if choice == "📝 إضافة طلب جديد":
                 st.error("يرجى إدخال اسم الزبون!")
             else:
                 remaining = max(0.0, total_price - advance_paid)
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                 conn = get_connection()
                 c = conn.cursor()
                 c.execute(
                     """
                     INSERT INTO orders (
-                        name, phone, item_type, length, width, shoulder, sleeve, 
-                        collar, cuff, notes, total_price, advance_paid, remaining_price, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        name, phone, item_type, length, width, shoulder, sleeve, collar, cuff,
+                        notes, total_price, advance_paid, remaining_price, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         name,
@@ -123,17 +137,86 @@ if choice == "📝 إضافة طلب جديد":
                         advance_paid,
                         remaining,
                         "قيد الانتظار",
+                        now_str,
                     ),
                 )
+                order_id = c.lastrowid
+                if advance_paid > 0:
+                    c.execute(
+                        "INSERT INTO payments (order_id, amount, payment_date) VALUES (?, ?, ?)",
+                        (order_id, advance_paid, now_str),
+                    )
                 conn.commit()
                 conn.close()
                 st.success(
-                    f"تم حفظ طلب الزبون {name} بنجاح! المتبقي عليه: {remaining}"
+                    f"تم حفظ الطلب! المتبقي على الزبون: {remaining:,.0f}"
                 )
 
-# --- 4. جدول العمل والدور ---
+# --- 4. تسديد الديون والحسابات (القسم الجديد) ---
+elif choice == "💵 تسديد الديون والحسابات":
+    st.subheader("💵 تسديد المبالغ المتبقية والديون")
+
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, name, phone, item_type, total_price, advance_paid, remaining_price FROM orders WHERE remaining_price > 0 ORDER BY id DESC"
+    )
+    debtors = c.fetchall()
+    conn.close()
+
+    if debtors:
+        st.write(f"عدد الزبائن الذين عليهم مبالغ متبقية: **{len(debtors)}**")
+        for debtor in debtors:
+            d_id, d_name, d_phone, d_item, d_total, d_paid, d_rem = debtor
+            with st.expander(
+                f"👤 {d_name} | {d_item} | المتبقي عليه: [{d_rem:,.0f}]"
+            ):
+                st.write(f"**رقم الهاتف:** {d_phone}")
+                st.write(
+                    f"**السعر الكلي:** {d_total:,.0f} | **المقروض/الواصل:** {d_paid:,.0f} | **المتبقي:** :red[{d_rem:,.0f}]"
+                )
+
+                col_pay1, col_pay2 = st.columns([2, 1])
+                with col_pay1:
+                    pay_amount = st.number_input(
+                        "المبلغ المستلم الآن:",
+                        min_value=0.0,
+                        max_value=float(d_rem),
+                        step=1.0,
+                        key=f"pay_input_{d_id}",
+                    )
+                with col_pay2:
+                    st.write(" ")
+                    st.write(" ")
+                    if st.button("تأكيد استلام المبلغ 💵", key=f"pay_btn_{d_id}"):
+                        if pay_amount > 0:
+                            new_paid = d_paid + pay_amount
+                            new_rem = d_total - new_paid
+                            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                            conn = get_connection()
+                            c = conn.cursor()
+                            c.execute(
+                                "UPDATE orders SET advance_paid = ?, remaining_price = ? WHERE id = ?",
+                                (new_paid, new_rem, d_id),
+                            )
+                            c.execute(
+                                "INSERT INTO payments (order_id, amount, payment_date) VALUES (?, ?, ?)",
+                                (d_id, pay_amount, now_str),
+                            )
+                            conn.commit()
+                            conn.close()
+
+                            st.success(f"تم تسجيل دفعة بقيمة {pay_amount:,.0f}!")
+                            st.rerun()
+                        else:
+                            st.warning("أدخل مبلغاً أكبر من صفر.")
+    else:
+        st.success("🎉 ممتاز! لا توجد ديون أو مبالغ متبقية على أي زبون.")
+
+# --- 5. جدول العمل والدور ---
 elif choice == "📋 جدول العمل والدور":
-    st.subheader("📋 متابعة الدور والطلبات")
+    st.subheader("📋 متابعة الدور وحالة التفصيل")
 
     conn = get_connection()
     c = conn.cursor()
@@ -159,6 +242,7 @@ elif choice == "📋 جدول العمل والدور":
                 o_paid,
                 o_rem,
                 o_status,
+                o_date,
             ) = row
 
             with st.expander(
@@ -167,6 +251,7 @@ elif choice == "📋 جدول العمل والدور":
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.write(f"**الهاتف:** {o_phone}")
+                    st.write(f"**التاريخ:** {o_date}")
                     st.write(f"**الملاحظات:** {o_notes}")
                 with c2:
                     st.write("**القياسات:**")
@@ -175,8 +260,8 @@ elif choice == "📋 جدول العمل والدور":
                     )
                 with c3:
                     st.write("**الحساب:**")
-                    st.write(f"الكلي: {o_total} | الواصل: {o_paid}")
-                    st.write(f"**المتبقي:** :red[{o_rem}]")
+                    st.write(f"الكلي: {o_total:,.0f} | الواصل: {o_paid:,.0f}")
+                    st.write(f"**المتبقي:** :red[{o_rem:,.0f}]")
 
                 st.markdown("---")
                 col_st, col_del = st.columns([3, 1])
@@ -213,15 +298,18 @@ elif choice == "📋 جدول العمل والدور":
                         conn = get_connection()
                         c = conn.cursor()
                         c.execute("DELETE FROM orders WHERE id = ?", (o_id,))
+                        c.execute(
+                            "DELETE FROM payments WHERE order_id = ?", (o_id,)
+                        )
                         conn.commit()
                         conn.close()
                         st.rerun()
     else:
         st.info("لا توجد طلبات مسجلة حالياً.")
 
-# --- 5. البحث عن زبون ---
+# --- 6. البحث عن زبون ---
 elif choice == "🔍 البحث عن زبون":
-    st.subheader("🔍 البحث عن قياسات أو حساب زبون")
+    st.subheader("🔍 البحث عن قياسات وسجل دفعات زبون")
     search = st.text_input("أدخل اسم الزبون أو رقم الهاتف:")
 
     if search:
@@ -232,24 +320,35 @@ elif choice == "🔍 البحث عن زبون":
             (f"%{search}%", f"%{search}%"),
         )
         results = c.fetchall()
-        conn.close()
 
         if results:
             for r in results:
-                st.success(f"تم العثور على الزبون: {r[1]} ({r[3]})")
+                st.success(f"الزبون: {r[1]} ({r[3]}) - الهاتف: {r[2]}")
                 st.write(
                     f"**القياسات:** طول {r[4]} | عرض {r[5]} | كتاف {r[6]} | ردان {r[7]} | ياخة {r[8]} | بزمة {r[9]}"
                 )
                 st.write(
-                    f"**المالية:** السعر الكلي: {r[11]} | المدفوع: {r[12]} | المتبقي: {r[13]}"
+                    f"**المالية:** الكلي: {r[11]:,.0f} | الواصل: {r[12]:,.0f} | المتبقي: {r[13]:,.0f}"
                 )
+
+                # عرض سجل الدفعات السابقة
+                c.execute(
+                    "SELECT amount, payment_date FROM payments WHERE order_id = ? ORDER BY id DESC",
+                    (r[0],),
+                )
+                pays = c.fetchall()
+                if pays:
+                    st.write("**سجل الدفعات المقبوضة:**")
+                    for p in pays:
+                        st.caption(f"• تم تسديد {p[0]:,.0f} بتاريخ {p[1]}")
                 st.markdown("---")
         else:
-            st.warning("لم يتم العثور على أي زبون بهذه البيانات.")
+            st.warning("لم يتم العثور على زبون مطابق.")
+        conn.close()
 
-# --- 6. الإحصائيات والمالية ---
+# --- 7. الإحصائيات والمالية ---
 elif choice == "📊 الإحصائيات والمالية":
-    st.subheader("📊 ملخص الحسابات والعمليات")
+    st.subheader("📊 ملخص الأرباح والديون")
 
     conn = get_connection()
     c = conn.cursor()
@@ -266,6 +365,6 @@ elif choice == "📊 الإحصائيات والمالية":
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("إجمالي الطلبات", total_orders)
-    m2.metric("إجمالي المبالغ", f"{total_income}")
-    m3.metric("الواصل (المقبوض)", f"{total_paid}")
-    m4.metric("الديون المتأخرة (المتبقي)", f"{total_due}")
+    m2.metric("إجمالي المبالغ", f"{total_income:,.0f}")
+    m3.metric("الواصل المقبوض فعلياً", f"{total_paid:,.0f}")
+    m4.metric("إجمالي الديون المتأخرة", f"{total_due:,.0f}")
