@@ -1,45 +1,39 @@
+import io
 import sqlite3
 from datetime import datetime
+import pandas as pd
+from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 
-# --- 1. إعداد قاعدة البيانات ---
-DB_NAME = "tailor_advanced.db"
+# --- 1. إدارة قاعدة البيانات ---
+DB_NAME = "tailor_master.db"
 
 
 def get_connection():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.text_factory = str
+    return conn
 
 
 def init_db():
     conn = get_connection()
     c = conn.cursor()
-    # جدول الطلبات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            phone TEXT,
-            item_type TEXT,
+            name TEXT, phone TEXT, item_type TEXT,
             length REAL, width REAL, shoulder REAL, sleeve REAL, collar REAL, cuff REAL,
-            notes TEXT,
-            total_price REAL,
-            advance_paid REAL,
-            remaining_price REAL,
-            status TEXT,
-            created_at TEXT
+            notes TEXT, total_price REAL, advance_paid REAL, remaining_price REAL,
+            status TEXT, created_at TEXT
         )
     """
     )
-    # جدول سجل الدفعات
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER,
-            amount REAL,
-            payment_date TEXT,
-            FOREIGN KEY (order_id) REFERENCES orders (id)
+            order_id INTEGER, amount REAL, payment_date TEXT
         )
     """
     )
@@ -49,13 +43,84 @@ def init_db():
 
 init_db()
 
-# --- 2. الواجهة الرئيسية ---
+
+# --- 2. دالة إنتاج صورة الوصل للعميل ---
+def generate_receipt_image(order_data):
+    o_id, name, phone, item, length, width, sh, slv, col, cuf, notes, total, paid, rem, status, date_str = (
+        order_data
+    )
+
+    # إنشاء صورة الوصل
+    img = Image.new("RGB", (550, 700), color=(248, 249, 250))
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font_title = ImageFont.truetype("arial.ttf", 26)
+        font_sub = ImageFont.truetype("arial.ttf", 20)
+        font_body = ImageFont.truetype("arial.ttf", 18)
+    except IOError:
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+        font_body = ImageFont.load_default()
+
+    # حدود وتصميم الوصل
+    draw.rectangle([15, 15, 535, 685], outline=(30, 41, 59), width=3)
+    draw.rectangle([25, 25, 525, 105], fill=(30, 41, 59))
+
+    # عنوان المحل ورقم الهاتف
+    draw.text(
+        (185, 35), "صادق الخياط", fill=(255, 255, 255), font=font_title
+    )
+    draw.text(
+        (165, 70),
+        "هاتف: 07713146637",
+        fill=(226, 232, 240),
+        font=font_sub,
+    )
+
+    y = 130
+    details = [
+        f"رقم الوصل: #{o_id}",
+        f"التاريخ: {date_str}",
+        f"اسم الزبون: {name}",
+        f"رقم هاتف الزبون: {phone if phone else 'غير محدد'}",
+        f"نوع التفصال: {item}",
+        "--------------------------------------------------",
+        "القياسات (سم):",
+        f"طول: {length}  |  عرض: {width}  |  كتاف: {sh}",
+        f"ردان: {slv}  |  ياخة: {col}  |  بزمة: {cuf}",
+        "--------------------------------------------------",
+        f"الحساب الكلي: {total:,.0f} د.ع",
+        f"الواصل (العربون): {paid:,.0f} د.ع",
+        f"المتبقي: {rem:,.0f} د.ع",
+        "--------------------------------------------------",
+        f"ملاحظات: {notes if notes else 'لا يوجد'}",
+        f"حالة الطلب: {status}",
+    ]
+
+    for line in details:
+        draw.text((40, y), line, fill=(15, 23, 42), font=font_body)
+        y += 30
+
+    draw.text(
+        (130, 650),
+        "شكراً لتعاملكم معنا - صادق الخياط",
+        fill=(100, 116, 139),
+        font=font_body,
+    )
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# --- 3. إعداد الواجهة ---
 st.set_page_config(
-    page_title="خياطة الفيحاء - إدارة الطلبات والمحاسبة",
-    page_icon="✂️",
-    layout="wide",
+    page_title="صادق الخياط - إدارة الطلبات", page_icon="✂️", layout="wide"
 )
-st.title("✂️ نظام إدارة الخياطة والمحاسبة الذكي")
+
+st.title("✂️ صادق الخياط - نظام إدارة الطلبات والمحاسبة")
+st.caption("📞 رقم الهاتف للتواصل: 07713146637")
 
 menu = [
     "📝 إضافة طلب جديد",
@@ -66,9 +131,9 @@ menu = [
 ]
 choice = st.sidebar.radio("القائمة الرئيسية:", menu)
 
-# --- 3. إضافة طلب جديد ---
+# --- 4. إضافة طلب جديد ---
 if choice == "📝 إضافة طلب جديد":
-    st.subheader("تسجيل طلب وقياسات وحساب جديد")
+    st.subheader("تسجيل طلب وقياسات جديدة")
 
     with st.form("add_order_form", clear_on_submit=True):
         col_c1, col_c2 = st.columns(2)
@@ -99,10 +164,12 @@ if choice == "📝 إضافة طلب جديد":
         st.markdown("**💰 التفاصيل المالية:**")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            total_price = st.number_input("السعر الكلي", min_value=0.0, step=1.0)
+            total_price = st.number_input(
+                "السعر الكلي (د.ع)", min_value=0.0, step=1000.0
+            )
         with col_p2:
             advance_paid = st.number_input(
-                "العربون المدفوع", min_value=0.0, step=1.0
+                "العربون المدفوع (د.ع)", min_value=0.0, step=1000.0
             )
 
         submit = st.form_submit_button("حفظ الطلب والحساب")
@@ -149,72 +216,10 @@ if choice == "📝 إضافة طلب جديد":
                 conn.commit()
                 conn.close()
                 st.success(
-                    f"تم حفظ الطلب! المتبقي على الزبون: {remaining:,.0f}"
+                    f"تم حفظ الطلب بنجاح! المتبقي على الزبون: {remaining:,.0f} د.ع"
                 )
 
-# --- 4. تسديد الديون والحسابات (القسم الجديد) ---
-elif choice == "💵 تسديد الديون والحسابات":
-    st.subheader("💵 تسديد المبالغ المتبقية والديون")
-
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute(
-        "SELECT id, name, phone, item_type, total_price, advance_paid, remaining_price FROM orders WHERE remaining_price > 0 ORDER BY id DESC"
-    )
-    debtors = c.fetchall()
-    conn.close()
-
-    if debtors:
-        st.write(f"عدد الزبائن الذين عليهم مبالغ متبقية: **{len(debtors)}**")
-        for debtor in debtors:
-            d_id, d_name, d_phone, d_item, d_total, d_paid, d_rem = debtor
-            with st.expander(
-                f"👤 {d_name} | {d_item} | المتبقي عليه: [{d_rem:,.0f}]"
-            ):
-                st.write(f"**رقم الهاتف:** {d_phone}")
-                st.write(
-                    f"**السعر الكلي:** {d_total:,.0f} | **المقروض/الواصل:** {d_paid:,.0f} | **المتبقي:** :red[{d_rem:,.0f}]"
-                )
-
-                col_pay1, col_pay2 = st.columns([2, 1])
-                with col_pay1:
-                    pay_amount = st.number_input(
-                        "المبلغ المستلم الآن:",
-                        min_value=0.0,
-                        max_value=float(d_rem),
-                        step=1.0,
-                        key=f"pay_input_{d_id}",
-                    )
-                with col_pay2:
-                    st.write(" ")
-                    st.write(" ")
-                    if st.button("تأكيد استلام المبلغ 💵", key=f"pay_btn_{d_id}"):
-                        if pay_amount > 0:
-                            new_paid = d_paid + pay_amount
-                            new_rem = d_total - new_paid
-                            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                            conn = get_connection()
-                            c = conn.cursor()
-                            c.execute(
-                                "UPDATE orders SET advance_paid = ?, remaining_price = ? WHERE id = ?",
-                                (new_paid, new_rem, d_id),
-                            )
-                            c.execute(
-                                "INSERT INTO payments (order_id, amount, payment_date) VALUES (?, ?, ?)",
-                                (d_id, pay_amount, now_str),
-                            )
-                            conn.commit()
-                            conn.close()
-
-                            st.success(f"تم تسجيل دفعة بقيمة {pay_amount:,.0f}!")
-                            st.rerun()
-                        else:
-                            st.warning("أدخل مبلغاً أكبر من صفر.")
-    else:
-        st.success("🎉 ممتاز! لا توجد ديون أو مبالغ متبقية على أي زبون.")
-
-# --- 5. جدول العمل والدور ---
+# --- 5. جدول العمل والدور + تنزيل الوصل ---
 elif choice == "📋 جدول العمل والدور":
     st.subheader("📋 متابعة الدور وحالة التفصيل")
 
@@ -254,14 +259,45 @@ elif choice == "📋 جدول العمل والدور":
                     st.write(f"**التاريخ:** {o_date}")
                     st.write(f"**الملاحظات:** {o_notes}")
                 with c2:
-                    st.write("**القياسات:**")
+                    st.write("**القياسات (سم):**")
                     st.write(
                         f"طول: {o_len} | عرض: {o_wid} | كتاف: {o_sh}\nردان: {o_slv} | ياخة: {o_col} | بزمة: {o_cuf}"
                     )
                 with c3:
                     st.write("**الحساب:**")
-                    st.write(f"الكلي: {o_total:,.0f} | الواصل: {o_paid:,.0f}")
-                    st.write(f"**المتبقي:** :red[{o_rem:,.0f}]")
+                    st.write(
+                        f"الكلي: {o_total:,.0f} د.ع | الواصل: {o_paid:,.0f} د.ع"
+                    )
+                    st.write(f"**المتبقي:** :red[{o_rem:,.0f} د.ع]")
+
+                    # زر تنزيل الوصل كصورة
+                    receipt_data = (
+                        o_id,
+                        o_name,
+                        o_phone,
+                        o_item,
+                        o_len,
+                        o_wid,
+                        o_sh,
+                        o_slv,
+                        o_col,
+                        o_cuf,
+                        o_notes,
+                        o_total,
+                        o_paid,
+                        o_rem,
+                        o_status,
+                        o_date,
+                    )
+                    img_bytes = generate_receipt_image(receipt_data)
+
+                    st.download_button(
+                        label="🖼️ تنزيل الوصل كصورة للعميل",
+                        data=img_bytes,
+                        file_name=f"وصل_صادق_الخياط_{o_name}_#{o_id}.png",
+                        mime="image/png",
+                        key=f"receipt_{o_id}",
+                    )
 
                 st.markdown("---")
                 col_st, col_del = st.columns([3, 1])
@@ -307,7 +343,71 @@ elif choice == "📋 جدول العمل والدور":
     else:
         st.info("لا توجد طلبات مسجلة حالياً.")
 
-# --- 6. البحث عن زبون ---
+# --- 6. تسديد الديون والحسابات ---
+elif choice == "💵 تسديد الديون والحسابات":
+    st.subheader("💵 تسديد المبالغ المتبقية والديون")
+
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, name, phone, item_type, total_price, advance_paid, remaining_price FROM orders WHERE remaining_price > 0 ORDER BY id DESC"
+    )
+    debtors = c.fetchall()
+    conn.close()
+
+    if debtors:
+        st.write(f"عدد الزبائن الذين عليهم مبالغ متبقية: **{len(debtors)}**")
+        for debtor in debtors:
+            d_id, d_name, d_phone, d_item, d_total, d_paid, d_rem = debtor
+            with st.expander(
+                f"👤 {d_name} | {d_item} | المتبقي عليه: [{d_rem:,.0f} د.ع]"
+            ):
+                st.write(f"**رقم الهاتف:** {d_phone}")
+                st.write(
+                    f"**السعر الكلي:** {d_total:,.0f} د.ع | **الواصل:** {d_paid:,.0f} د.ع | **المتبقي:** :red[{d_rem:,.0f} د.ع]"
+                )
+
+                col_pay1, col_pay2 = st.columns([2, 1])
+                with col_pay1:
+                    pay_amount = st.number_input(
+                        "المبلغ المستلم الآن (د.ع):",
+                        min_value=0.0,
+                        max_value=float(d_rem),
+                        step=1000.0,
+                        key=f"pay_input_{d_id}",
+                    )
+                with col_pay2:
+                    st.write(" ")
+                    st.write(" ")
+                    if st.button("تأكيد استلام المبلغ 💵", key=f"pay_btn_{d_id}"):
+                        if pay_amount > 0:
+                            new_paid = d_paid + pay_amount
+                            new_rem = d_total - new_paid
+                            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                            conn = get_connection()
+                            c = conn.cursor()
+                            c.execute(
+                                "UPDATE orders SET advance_paid = ?, remaining_price = ? WHERE id = ?",
+                                (new_paid, new_rem, d_id),
+                            )
+                            c.execute(
+                                "INSERT INTO payments (order_id, amount, payment_date) VALUES (?, ?, ?)",
+                                (d_id, pay_amount, now_str),
+                            )
+                            conn.commit()
+                            conn.close()
+
+                            st.success(
+                                f"تم تسجيل دفعة بقيمة {pay_amount:,.0f} د.ع بنجاح!"
+                            )
+                            st.rerun()
+                        else:
+                            st.warning("أدخل مبلغاً أكبر من صفر.")
+    else:
+        st.success("🎉 لا توجد ديون أو مبالغ متبقية على أي زبون.")
+
+# --- 7. البحث عن زبون ---
 elif choice == "🔍 البحث عن زبون":
     st.subheader("🔍 البحث عن قياسات وسجل دفعات زبون")
     search = st.text_input("أدخل اسم الزبون أو رقم الهاتف:")
@@ -328,10 +428,9 @@ elif choice == "🔍 البحث عن زبون":
                     f"**القياسات:** طول {r[4]} | عرض {r[5]} | كتاف {r[6]} | ردان {r[7]} | ياخة {r[8]} | بزمة {r[9]}"
                 )
                 st.write(
-                    f"**المالية:** الكلي: {r[11]:,.0f} | الواصل: {r[12]:,.0f} | المتبقي: {r[13]:,.0f}"
+                    f"**المالية:** الكلي: {r[11]:,.0f} د.ع | الواصل: {r[12]:,.0f} د.ع | المتبقي: {r[13]:,.0f} د.ع"
                 )
 
-                # عرض سجل الدفعات السابقة
                 c.execute(
                     "SELECT amount, payment_date FROM payments WHERE order_id = ? ORDER BY id DESC",
                     (r[0],),
@@ -340,13 +439,15 @@ elif choice == "🔍 البحث عن زبون":
                 if pays:
                     st.write("**سجل الدفعات المقبوضة:**")
                     for p in pays:
-                        st.caption(f"• تم تسديد {p[0]:,.0f} بتاريخ {p[1]}")
+                        st.caption(
+                            f"• تم تسديد {p[0]:,.0f} د.ع بتاريخ {p[1]}"
+                        )
                 st.markdown("---")
         else:
             st.warning("لم يتم العثور على زبون مطابق.")
         conn.close()
 
-# --- 7. الإحصائيات والمالية ---
+# --- 8. الإحصائيات والمالية ---
 elif choice == "📊 الإحصائيات والمالية":
     st.subheader("📊 ملخص الأرباح والديون")
 
@@ -365,6 +466,6 @@ elif choice == "📊 الإحصائيات والمالية":
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("إجمالي الطلبات", total_orders)
-    m2.metric("إجمالي المبالغ", f"{total_income:,.0f}")
-    m3.metric("الواصل المقبوض فعلياً", f"{total_paid:,.0f}")
-    m4.metric("إجمالي الديون المتأخرة", f"{total_due:,.0f}")
+    m2.metric("إجمالي المبالغ", f"{total_income:,.0f} د.ع")
+    m3.metric("الواصل المقبوض", f"{total_paid:,.0f} د.ع")
+    m4.metric("إجمالي الديون", f"{total_due:,.0f} د.ع")
