@@ -1,2 +1,5 @@
 streamlit
-pillow
+pandas
+Pillow
+arabic-reshaper
+python-bidi
