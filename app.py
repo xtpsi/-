@@ -1,6 +1,74 @@
 import streamlit as st
 from datetime import datetime, date
 
+# 1. إعداد الصفحة الأساسي
+st.set_page_config(page_title="صادق الخياط", page_icon="✂️", layout="wide")
+
+# 2. تنسيق الواجهة والقوائم عبر CSS مستقر وآمن
+st.markdown("""
+    <style>
+    /* اتجاه وتنسيق الصفحة العامة */
+    .stApp {
+        background-color: #f8fafc;
+        direction: rtl;
+        text-align: right;
+    }
+    
+    /* تنسيق القائمة الجانبية بشكل منظم */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff !important;
+        border-left: 1px solid #e2e8f0;
+    }
+
+    section[data-testid="stSidebar"] .stRadio label {
+        background-color: #f1f5f9;
+        border-radius: 8px;
+        padding: 8px 12px !important;
+        margin-bottom: 4px;
+        border: 1px solid #e2e8f0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+    }
+
+    /* تحسين شكل البطاقات وحاويات البيانات */
+    div[data-testid="stVerticalBlock"] > div {
+        background-color: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        padding: 1rem;
+    }
+
+    /* تحسين الخانات والأزرار */
+    .stTextInput input, .stSelectbox select, .stTextArea textarea {
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+
+    .stButton > button {
+        background-color: #2563eb !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: bold;
+        width: 100%;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# 3. دالة معالجة التاريخ الآمنة لمنع الأخطاء
+def safe_parse_date(date_val):
+    if isinstance(date_val, date):
+        return date_val
+    elif isinstance(date_val, datetime):
+        return date_val.date()
+    elif isinstance(date_val, str) and date_val.strip():
+        try:
+            return datetime.strptime(date_val.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return date.today()
+    return date.today()
+
 # =========================================================
 # 1. تحسين واجهة المستخدم وقوائم التنقل (Tailwind & CSS)
 # =========================================================
