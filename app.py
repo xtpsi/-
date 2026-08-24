@@ -41,7 +41,7 @@ init_db()
 
 # --- 2. إعداد الصفحة والتنسيقات (CSS) ---
 st.set_page_config(
-    page_title="خياطة مهندس وأولاده", page_icon="✂️", layout="wide"
+    page_title="صادق الخياط", page_icon="✂️", layout="wide"
 )
 
 st.markdown(
@@ -86,7 +86,7 @@ st.markdown(
 
 # --- 3. القائمة الجانبية ---
 st.sidebar.markdown(
-    "<h2 style='text-align: center;'>✂️ خياطة مهدي وأولاده</h2>",
+    "<h2 style='text-align: center;'>✂️ صادق الخياط</h2>",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown("---")
