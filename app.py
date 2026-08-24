@@ -39,16 +39,14 @@ st.set_page_config(
 )
 
 # =========================
-# CSS المتقدم (يدعم الجوال)
+# CSS المخصص
 # =========================
 def apply_custom_css():
     st.markdown("""
     <style>
-        /* خلفية عامة */
         .stApp {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         }
-        /* القائمة الجانبية */
         .css-1d391kg {
             background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
         }
@@ -75,7 +73,6 @@ def apply_custom_css():
         .stRadio label > div:first-child {
             display: none;
         }
-        /* أزرار */
         .stButton button {
             background: linear-gradient(135deg, #f1c40f, #f39c12);
             color: #1e3c72;
@@ -91,7 +88,6 @@ def apply_custom_css():
             transform: scale(1.05);
             box-shadow: 0 6px 15px rgba(0,0,0,0.3);
         }
-        /* بطاقات التوسيع */
         .streamlit-expanderHeader {
             background: linear-gradient(135deg, #2a5298, #1e3c72) !important;
             color: white !important;
@@ -120,7 +116,6 @@ def apply_custom_css():
         footer {
             visibility: hidden;
         }
-        /* شريط التمرير */
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -132,7 +127,6 @@ def apply_custom_css():
             background: #2a5298;
             border-radius: 10px;
         }
-        /* تحسين الجداول للجوال */
         .dataframe {
             overflow-x: auto !important;
             display: block !important;
@@ -154,7 +148,6 @@ def apply_custom_css():
                 font-size: 2em !important;
             }
         }
-        /* بطاقات المؤشرات */
         .metric-card {
             background: white;
             border-radius: 15px;
@@ -174,7 +167,6 @@ def apply_custom_css():
         .metric-card .value.overdue { color: #e74c3c; }
         .metric-card .value.soon { color: #f39c12; }
         .metric-card .value.normal { color: #27ae60; }
-        /* صورة القماش المصغرة */
         .fabric-thumb {
             border-radius: 10px;
             border: 2px solid #1e3c72;
@@ -296,7 +288,6 @@ def init_db():
             fabric_image TEXT
         )
     """)
-    # إضافة الأعمدة الجديدة إذا لم تكن موجودة
     ensure_column("orders", "customer_id", "INTEGER")
     ensure_column("orders", "delivery_date", "TEXT")
     ensure_column("orders", "updated_at", "TEXT")
@@ -408,7 +399,7 @@ def create_order(data):
             data.get("fabric_type", ""),
             data.get("color", ""),
             data.get("model", ""),
-            data.get("fabric_image", "")  # النص المشفر Base64
+            data.get("fabric_image", "")
         )).lastrowid
         if data["advance_paid"] > 0:
             conn.execute("INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
@@ -466,7 +457,6 @@ def add_payment(order_id, amount, notes):
     except Exception as e:
         return False, str(e)
 
-# دالة تحديث الملاحظة السريعة
 def update_quick_note(order_id, note):
     try:
         conn = db.get_connection()
@@ -479,7 +469,7 @@ def update_quick_note(order_id, note):
         return False
 
 # =========================
-# دوال التقارير والإحصائيات
+# دوال التقارير والإحصائيات (مصححة)
 # =========================
 def get_monthly_report():
     df = get_orders()
@@ -499,18 +489,20 @@ def get_overdue_orders():
     df = get_orders()
     if df.empty:
         return df
-    df['delivery_date'] = pd.to_datetime(df['delivery_date']).dt.date
-    today = date.today()
-    return df[(df['delivery_date'] < today) & (df['status'] != 'تم التسليم') & (df['status'] != 'ملغي')]
+    df['delivery_date_dt'] = pd.to_datetime(df['delivery_date'], errors='coerce')
+    df = df[df['delivery_date_dt'].notna()]
+    today = pd.Timestamp(date.today())
+    df['days_left'] = (df['delivery_date_dt'] - today).dt.days
+    return df[(df['days_left'] < 0) & (df['status'] != 'تم التسليم') & (df['status'] != 'ملغي')]
 
 def get_soon_orders(days=3):
-    """الطلبات التي ستسلم خلال الأيام القادمة"""
     df = get_orders()
     if df.empty:
         return df
-    df['delivery_date'] = pd.to_datetime(df['delivery_date']).dt.date
-    today = date.today()
-    df['days_left'] = (df['delivery_date'] - today).dt.days
+    df['delivery_date_dt'] = pd.to_datetime(df['delivery_date'], errors='coerce')
+    df = df[df['delivery_date_dt'].notna()]
+    today = pd.Timestamp(date.today())
+    df['days_left'] = (df['delivery_date_dt'] - today).dt.days
     return df[(df['days_left'] >= 0) & (df['days_left'] <= days) & (df['status'] != 'تم التسليم') & (df['status'] != 'ملغي')]
 
 def get_status_counts():
@@ -520,10 +512,10 @@ def get_status_counts():
     return df['status'].value_counts()
 
 # =========================
-# دالة توليد الإيصال (مع الحقول الجديدة)
+# دالة توليد الإيصال
 # =========================
 def generate_receipt(order):
-    width, height = 1100, 1800  # أطول قليلاً لاستيعاب الحقول الجديدة
+    width, height = 1100, 1800
     image = Image.new("RGB", (width, height), "#f8f9fa")
     draw = ImageDraw.Draw(image)
     
@@ -633,7 +625,7 @@ def generate_receipt(order):
 def main():
     apply_custom_css()
     
-    # === تنبيه بدء التشغيل (الميزة 5) ===
+    # تنبيه بدء التشغيل
     soon_orders = get_soon_orders(days=3)
     overdue_orders = get_overdue_orders()
     if not overdue_orders.empty or not soon_orders.empty:
@@ -646,9 +638,8 @@ def main():
             if not overdue_orders.empty:
                 st.error(f"🚨 **متأخر:** هناك {len(overdue_orders)} طلباً تجاوز موعد التسليم!")
             if not soon_orders.empty:
-                st.warning(f"⏳ **قريب:** هناك {len(soon_orders)} طلباً سيسلم خلال {min(3, len(soon_orders))} أيام!")
+                st.warning(f"⏳ **قريب:** هناك {len(soon_orders)} طلباً سيسلم خلال الأيام القادمة!")
     
-    # رأس الصفحة
     st.markdown("""
     <div style="background: linear-gradient(135deg, #1e3c72, #2a5298); padding: 25px; border-radius: 20px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 20px rgba(0,0,0,0.3);">
         <h1 style="color: white; font-size: 3.5em; margin: 0;">✂️ صادق الخياط</h1>
@@ -656,7 +647,7 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # === إحصائيات سريعة في القائمة الجانبية (الميزة 10) ===
+    # إحصائيات سريعة في القائمة الجانبية
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📊 إحصائيات سريعة")
     df_all = get_orders()
@@ -670,7 +661,6 @@ def main():
     else:
         st.sidebar.info("لا توجد طلبات")
     
-    # القائمة الرئيسية
     menu_icons = {
         "🏠 لوحة التحكم": "📊",
         "➕ إضافة طلب": "📝",
@@ -687,7 +677,7 @@ def main():
         format_func=lambda x: f"{menu_icons[x]} {x}"
     )
     
-    # ----- 1. لوحة التحكم (مع الميزات 1 و 8) -----
+    # ----- 1. لوحة التحكم -----
     if menu == "🏠 لوحة التحكم":
         st.subheader("📊 لوحة التحكم")
         df = get_orders()
@@ -695,7 +685,6 @@ def main():
             st.info("لا توجد طلبات مسجلة حتى الآن.")
             return
         
-        # مؤشرات عامة
         total_orders = len(df)
         total_revenue = df["total_price"].fillna(0).sum()
         total_paid = df["advance_paid"].fillna(0).sum()
@@ -710,14 +699,11 @@ def main():
         col4.metric("📉 المتبقي", f"{total_due:,.0f} د.ع", delta=f"{total_due/total_revenue*100:.1f}%" if total_revenue > 0 else "0%")
         col5.metric("✅ نسبة الإنجاز", f"{completion_rate:.1f}%")
         
-        # ----- الميزة 1: عرض المواعيد القريبة -----
+        # عرض المواعيد القريبة
         st.subheader("📅 المواعيد القريبة (خلال 7 أيام)")
         soon_7 = get_soon_orders(days=7)
         if not soon_7.empty:
-            show_soon = soon_7[["id", "name", "phone", "item_type", "delivery_date", "status"]].copy()
-            # حساب المتبقي للأيام
-            today = date.today()
-            show_soon['days_left'] = (pd.to_datetime(show_soon['delivery_date']).dt.date - today).dt.days
+            show_soon = soon_7[["id", "name", "phone", "item_type", "delivery_date", "status", "days_left"]].copy()
             show_soon.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "التسليم", "الحالة", "المتبقي (يوم)"]
             st.dataframe(show_soon, use_container_width=True, hide_index=True)
         else:
@@ -736,12 +722,11 @@ def main():
             if not monthly.empty:
                 st.area_chart(monthly.set_index('الشهر')['إجمالي المبيعات'])
         
-        # ----- الميزة 8: آخر الطلبات مع ملاحظات سريعة -----
+        # آخر الطلبات مع ملاحظات سريعة
         st.subheader("📋 آخر الطلبات (مع إضافة ملاحظة سريعة)")
         show = df.head(10)[["id", "name", "phone", "item_type", "status", "delivery_date", "remaining_price", "notes"]].copy()
         show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي", "الملاحظات"]
         
-        # عرض كل طلب مع زر ملاحظة سريعة
         for idx, row in show.iterrows():
             col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1, 2, 1.5, 1.5, 1.5, 1.5, 1.5, 0.8])
             with col1:
@@ -759,7 +744,6 @@ def main():
             with col7:
                 st.write(f"{row['المتبقي']:,.0f} د.ع")
             with col8:
-                # نافذة منبثقة لإضافة ملاحظة سريعة
                 with st.popover("✏️", use_container_width=True):
                     st.caption(f"ملاحظة للطلب #{row['رقم']}")
                     quick_note = st.text_area("اكتب الملاحظة", value=row['الملاحظات'] or "", key=f"quick_note_{row['رقم']}")
@@ -771,7 +755,7 @@ def main():
                             st.error("❌ حدث خطأ")
         st.caption("💡 اضغط على ✏️ لتعديل الملاحظة بسرعة دون فتح الطلب")
     
-    # ----- 2. إضافة طلب (مع الحقول الجديدة وصورة القماش) -----
+    # ----- 2. إضافة طلب -----
     elif menu == "➕ إضافة طلب":
         st.subheader("➕ تسجيل طلب جديد")
         customers_df = get_customers()
@@ -824,14 +808,12 @@ def main():
             item_type = col1.selectbox("نوع التفصيل", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "جاكيت", "تفصيل آخر"])
             delivery_date = col2.date_input("تاريخ التسليم المتوقع", value=date.today() + timedelta(days=7))
             
-            # ----- الميزة 4: حقول إضافية -----
             st.markdown("### 🧵 تفاصيل القماش")
             col1, col2, col3 = st.columns(3)
             fabric_type = col1.text_input("نوع القماش", value=suggested_fabric, placeholder="مثلاً: صوف، قطن، حرير")
             color = col2.text_input("اللون", value=suggested_color, placeholder="مثلاً: أزرق، أسود")
             model = col3.text_input("الموديل/التصميم", value=suggested_model, placeholder="رقم الموديل أو وصفه")
             
-            # ----- الميزة الجديدة: صورة القماش -----
             st.markdown("### 📸 صورة القماش (اختياري)")
             fabric_image_file = st.file_uploader("اختر صورة للقماش", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=False)
             
@@ -859,12 +841,10 @@ def main():
                     st.error("⚠️ المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الكلي.")
                 else:
                     with st.spinner('جاري حفظ الطلب...'):
-                        # معالجة الصورة إلى Base64
                         image_b64 = ""
                         if fabric_image_file is not None:
                             image_data = fabric_image_file.read()
                             image_b64 = base64.b64encode(image_data).decode("utf-8")
-                        
                         order_id, remaining, error = create_order({
                             "name": name,
                             "phone": phone,
@@ -891,34 +871,39 @@ def main():
                             st.info(f"💵 المبلغ المتبقي: {remaining:,.0f} د.ع")
                             st.balloons()
     
-    # ----- باقي الأقسام (مدير الطلبات، الدفعات، الزبائن، البحث، الإحصائيات، النسخ الاحتياطي) -----
-    # (تم إدراجها في الكود الكامل أدناه، لكن نظراً لطول الرد سأدرجها كاملة في ملف مرفق أو سأكملها هنا)
-    # بما أن الرد سيكون طويلاً جداً، سأدرج باقي الأقسام في الرد التالي إذا لزم الأمر، ولكن يمكنك نسخ الكود الكامل من المرفق.
-    
+    # ----- 3. إدارة الطلبات (مصححة) -----
     elif menu == "📋 إدارة الطلبات":
         st.subheader("📋 إدارة الطلبات")
         df = get_orders()
         if df.empty:
             st.info("لا توجد طلبات.")
             return
-        # تحويل تاريخ التسليم
-        df['delivery_date_dt'] = pd.to_datetime(df['delivery_date'])
+        
+        # حساب الأيام المتبقية بشكل آمن
+        df['delivery_date_dt'] = pd.to_datetime(df['delivery_date'], errors='coerce')
         today = pd.Timestamp(date.today())
         df['days_left'] = (df['delivery_date_dt'] - today).dt.days
+        df['days_left'] = df['days_left'].fillna(999)  # للقيم الفارغة
+        
         def get_deadline_status(days):
+            if pd.isna(days) or days >= 999:
+                return "عادي"
             if days < 0:
                 return "متأخر"
             elif days <= 3:
                 return "قريب"
             else:
                 return "عادي"
+        
         df['deadline_status'] = df['days_left'].apply(get_deadline_status)
         status_order = {"متأخر": 0, "قريب": 1, "عادي": 2}
         df['sort_order'] = df['deadline_status'].map(status_order)
         df = df.sort_values(by=['sort_order', 'days_left']).drop(columns=['sort_order'])
+        
         overdue_count = len(df[df['deadline_status'] == 'متأخر'])
         soon_count = len(df[df['deadline_status'] == 'قريب'])
         normal_count = len(df[df['deadline_status'] == 'عادي'])
+        
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown(f"""<div class="metric-card"><div class="label">🔴 متأخر</div><div class="value overdue">{overdue_count}</div></div>""", unsafe_allow_html=True)
@@ -949,6 +934,7 @@ def main():
             display_df.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي (يوم)", "حالة الموعد", "المتبقي (د.ع)"]
             display_df["المتبقي (يوم)"] = display_df["المتبقي (يوم)"].astype(int)
             display_df["المتبقي (د.ع)"] = display_df["المتبقي (د.ع)"].apply(lambda x: f"{x:,.0f} د.ع")
+            
             def color_rows(row):
                 status = row["حالة الموعد"]
                 if status == "متأخر":
@@ -983,7 +969,6 @@ def main():
                     st.write(f"الردان: {row['sleeve']} سم")
                     st.write(f"الياخة: {row['collar']} سم")
                     st.write(f"البزمة: {row['cuff']} سم")
-                    # عرض صورة القماش إن وجدت
                     if row.get('fabric_image'):
                         try:
                             img_data = base64.b64decode(row['fabric_image'])
