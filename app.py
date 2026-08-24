@@ -3,7 +3,7 @@ from datetime import datetime
 import streamlit as st
 
 # --- 1. إعداد قاعدة البيانات ---
-DB_NAME = "tailor_engineer.db"
+DB_NAME = "sadeq_tailor.db"
 
 
 def get_connection():
@@ -40,9 +40,7 @@ def init_db():
 init_db()
 
 # --- 2. إعداد الصفحة والتنسيقات (CSS) ---
-st.set_page_config(
-    page_title="صادق الخياط", page_icon="✂️", layout="wide"
-)
+st.set_page_config(page_title="صادق الخياط", page_icon="✂️", layout="wide")
 
 st.markdown(
     """
@@ -60,6 +58,11 @@ st.markdown(
         font-size: 26px; font-weight: bold; color: #0F172A; text-align: center;
         padding: 14px; background: white; border-radius: 12px;
         box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05); margin-bottom: 25px;
+    }
+
+    .shop-phone {
+        font-size: 16px; color: #2563EB; font-weight: bold; text-align: center;
+        margin-top: -15px; margin-bottom: 20px;
     }
 
     .measure-tag {
@@ -86,7 +89,11 @@ st.markdown(
 
 # --- 3. القائمة الجانبية ---
 st.sidebar.markdown(
-    "<h2 style='text-align: center;'>✂️ صادق الخياط</h2>",
+    "<h2 style='text-align: center; margin-bottom: 0;'>✂️ صادق الخياط</h2>",
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown(
+    "<p style='text-align: center; color: #94A3B8 !important; font-weight: bold;'>📞 07713146637</p>",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown("---")
@@ -103,7 +110,11 @@ choice = st.sidebar.radio("التنقل السريع:", menu)
 # --- 4. إضافة طلب جديد ---
 if choice == "📝 إضافة طلب جديد":
     st.markdown(
-        "<div class='main-header'>📝 تسجيل طلب وقياسات جديدة - خياطة مهندس وأولاده</div>",
+        "<div class='main-header'>📝 تسجيل طلب وقياسات جديدة - صادق الخياط</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='shop-phone'>📞 رقم الهاتف: 07713146637</div>",
         unsafe_allow_html=True,
     )
 
@@ -111,7 +122,7 @@ if choice == "📝 إضافة طلب جديد":
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             name = st.text_input("👤 اسم الزبون *")
-            phone = st.text_input("📞 رقم الهاتف")
+            phone = st.text_input("📞 رقم هاتف الزبون")
         with col_c2:
             item_type = st.selectbox(
                 "🧵 نوع التفصال", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة"]
@@ -204,6 +215,10 @@ elif choice == "📋 جدول العمل والدور":
         "<div class='main-header'>📋 جدول العمل والدور ومواعيد التسليم</div>",
         unsafe_allow_html=True,
     )
+    st.markdown(
+        "<div class='shop-phone'>📞 صادق الخياط: 07713146637</div>",
+        unsafe_allow_html=True,
+    )
 
     conn = get_connection()
     c = conn.cursor()
@@ -250,12 +265,15 @@ elif choice == "📋 جدول العمل والدور":
             with st.expander(
                 f"📌 #{o_id} | 👤 {o_name} | 🧵 {o_item} | 🏷️ [{o_status}]"
             ):
-                st.markdown(f"**حالة الموعد:** {date_status_html}", unsafe_allow_html=True)
+                st.markdown(
+                    f"**حالة الموعد:** {date_status_html}",
+                    unsafe_allow_html=True,
+                )
                 st.write(" ")
 
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    st.write(f"📞 **الهاتف:** {o_phone}")
+                    st.write(f"📞 **هاتف الزبون:** {o_phone}")
                     st.write(f"📅 **تاريخ الطلب:** {o_date}")
                     st.write(f"📝 **الملاحظات:** {o_notes}")
                 with c2:
@@ -325,6 +343,10 @@ elif choice == "📋 جدول العمل والدور":
 elif choice == "💵 تسديد الديون والحسابات":
     st.markdown(
         "<div class='main-header'>💵 تسديد المبالغ المتبقية والديون</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='shop-phone'>📞 صادق الخياط: 07713146637</div>",
         unsafe_allow_html=True,
     )
 
@@ -439,8 +461,11 @@ elif choice == "🔍 البحث عن زبون":
 # --- 8. الإحصائيات والمالية ---
 elif choice == "📊 الإحصائيات والمالية":
     st.markdown(
-        "<div class='main-header'>📊 ملخص الأرباح والديون العامة - خياطة مهندس وأولاده</div>",
+        "<div class='main-header'>📊 ملخص الأرباح والديون العامة - صادق الخياط</div>",
         unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='shop-phone'>📞 07713146637</div>", unsafe_allow_html=True
     )
 
     conn = get_connection()
