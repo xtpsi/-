@@ -104,6 +104,7 @@ def init_db():
             item_type TEXT DEFAULT '',
             status TEXT DEFAULT 'قيد الانتظار',
             notes TEXT DEFAULT '',
+            sizes TEXT DEFAULT '',
             delivery_date TEXT DEFAULT '',
             total_price REAL DEFAULT 0,
             paid_amount REAL DEFAULT 0,
@@ -113,26 +114,15 @@ def init_db():
     """)
     conn.commit()
 
-    # تحديث أعمدة قاعدة البيانات القديمة آلياً لتفادي DatabaseError
+    # تحديث أعمدة قاعدة البيانات تلقائياً لإضافة عمود القياسات sizes
     c.execute("PRAGMA table_info(orders)")
     columns = [col[1] for col in c.fetchall()]
     
-    missing_columns = {
-        'remaining_amount': 'REAL DEFAULT 0',
-        'paid_amount': 'REAL DEFAULT 0',
-        'total_price': 'REAL DEFAULT 0',
-        'delivery_date': "TEXT DEFAULT ''",
-        'item_type': "TEXT DEFAULT ''",
-        'status': "TEXT DEFAULT 'قيد الانتظار'",
-        'notes': "TEXT DEFAULT ''"
-    }
-
-    for col_name, col_type in missing_columns.items():
-        if col_name not in columns:
-            try:
-                c.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_type}")
-            except Exception:
-                pass
+    if 'sizes' not in columns:
+        try:
+            c.execute("ALTER TABLE orders ADD COLUMN sizes TEXT DEFAULT ''")
+        except Exception:
+            pass
 
     conn.commit()
     conn.close()
@@ -171,42 +161,60 @@ with tab1:
     col3.metric("جاهز للاستلام", ready_count)
 
 # ------------------------------------------
-# التبويب الثاني: إضافة طلب
+# التبويب الثاني: إضافة طلب + قائمة القياسات
 # ------------------------------------------
 with tab2:
     st.subheader("إضافة طلب جديد")
     with st.form("add_order_form"):
+        st.markdown("##### 👤 معلومات الزبون والطلب")
         c_name = st.text_input("اسم الزبون")
         c_phone = st.text_input("رقم الهاتف")
         item_type = st.selectbox("نوع القماش / القطعة", ["دشداشة", "بنطال", "قميص", "بدلة"])
         status = st.selectbox("حالة الطلب", STATUSES)
+        
+        st.markdown("##### 📐 جدول القياسات (سم)")
+        col_s1, col_s2, col_s3 = st.columns(3)
+        size_length = col_s1.text_input("الطول", value="")
+        size_shoulder = col_s2.text_input("الكتف", value="")
+        size_sleeve = col_s3.text_input("الردن / الكم", value="")
+        
+        col_s4, col_s5, col_s6 = st.columns(3)
+        size_chest = col_s4.text_input("الصدر", value="")
+        size_neck = col_s5.text_input("الرقبة", value="")
+        size_waist = col_s6.text_input("الخصر / العرض", value="")
+
+        st.markdown("##### 💰 المبالغ والتاريخ")
         delivery_d = st.date_input("تاريخ الاستلام المتوقع", date.today())
         total_p = st.number_input("المبلغ الإجمالي", min_value=0.0, step=1000.0)
         paid_p = st.number_input("المبلغ المدفوع", min_value=0.0, step=1000.0)
-        notes = st.text_area("ملاحظات / قياسات")
+        notes = st.text_area("ملاحظات إضافية")
 
-        submitted = st.form_submit_button("حفظ الطلب")
+        submitted = st.form_submit_button("حفظ الطلب والقياسات")
         if submitted:
             if c_name:
                 conn = get_connection()
                 c = conn.cursor()
                 rem_p = total_p - paid_p
+                
+                # تجميع القياسات في نص مرتب
+                sizes_text = f"طول: {size_length} | كتف: {size_shoulder} | ردن: {size_sleeve} | صدر: {size_chest} | رقبة: {size_neck} | خصر: {size_waist}"
+                
                 c.execute("""
-                    INSERT INTO orders (customer_name, phone, item_type, status, notes, delivery_date, total_price, paid_amount, remaining_amount, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (c_name, c_phone, item_type, status, notes, str(delivery_d), total_p, paid_p, rem_p, str(date.today())))
+                    INSERT INTO orders (customer_name, phone, item_type, status, notes, sizes, delivery_date, total_price, paid_amount, remaining_amount, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (c_name, c_phone, item_type, status, notes, sizes_text, str(delivery_d), total_p, paid_p, rem_p, str(date.today())))
                 conn.commit()
                 conn.close()
-                st.success("تم حفظ الطلب بنجاح!")
+                st.success("تم حفظ الطلب والقياسات بنجاح!")
                 st.rerun()
             else:
                 st.error("يرجى إدخال اسم الزبون.")
 
 # ------------------------------------------
-# التبويب الثالث: إدارة الطلبات
+# التبويب الثالث: إدارة الطلبات وعرض القياسات
 # ------------------------------------------
 with tab3:
-    st.subheader("إدارة الطلبات")
+    st.subheader("إدارة الطلبات والقياسات")
     conn = get_connection()
     df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
     conn.close()
@@ -223,9 +231,11 @@ with tab3:
             p_p = row.get('paid_amount', 0)
             rem_p = row.get('remaining_amount', 0)
             nts = row.get('notes', '-')
+            szs = row.get('sizes', 'لا توجد قياسات مسجلة')
 
             with st.expander(f"#{order_id} | {cust_name} | {i_type} ({st_val})"):
                 st.write(f"**رقم الهاتف:** {phone_val}")
+                st.info(f"📐 **تفاصيل القياسات:** {szs}")
                 st.write(f"**تاريخ الاستلام:** {d_val}")
                 st.write(f"**المبلغ الكلي:** {tot_p} | **المدفوع:** {p_p} | **المتبقي:** {rem_p}")
                 st.write(f"**ملاحظات:** {nts}")
@@ -233,7 +243,7 @@ with tab3:
         st.info("لا توجد طلبات مسجلة حالياً.")
 
 # ------------------------------------------
-# التبويب الرابع: الدفعات والديون (استعلام آمن)
+# التبويب الرابع: الدفعات والديون
 # ------------------------------------------
 with tab4:
     st.subheader("الحسابات والديون")
@@ -259,7 +269,7 @@ with tab4:
 # التبويب الخامس: البحث
 # ------------------------------------------
 with tab5:
-    st.subheader("البحث عن طلب")
+    st.subheader("البحث عن طلب أو قياس")
     search_query = st.text_input("أدخل اسم الزبون أو رقم الهاتف:")
     if search_query:
         conn = get_connection()
