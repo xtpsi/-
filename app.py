@@ -9,10 +9,9 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
-import matplotlib.pyplot as plt
 
 # =========================
-# إعدادات عامة
+# إعدادات المحل (يمكنك تعديلها هنا)
 # =========================
 DB_NAME = "tailor_master.db"
 SHOP_NAME = "صادق الخياط"
@@ -32,7 +31,6 @@ st.set_page_config(
     page_title=f"{SHOP_NAME} - إدارة الطلبات",
     page_icon="✂️",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 # =========================
@@ -99,9 +97,6 @@ class DatabaseManager:
 
 db = DatabaseManager()
 
-# =========================
-# دوال قاعدة البيانات
-# =========================
 def get_columns(table):
     conn = db.get_connection()
     return [row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
@@ -168,7 +163,7 @@ def init_db():
 init_db()
 
 # =========================
-# دوال البيانات مع Caching
+# دوال البيانات
 # =========================
 @st.cache_data(ttl=60)
 def get_customers():
@@ -298,9 +293,6 @@ def add_payment(order_id, amount, notes):
     except Exception as e:
         return False, str(e)
 
-# =========================
-# تحليلات وتقارير
-# =========================
 def get_monthly_report():
     df = get_orders()
     if df.empty:
@@ -329,9 +321,6 @@ def get_status_counts():
         return pd.Series()
     return df['status'].value_counts()
 
-# =========================
-# توليد الوصل
-# =========================
 def generate_receipt(order):
     width, height = 1100, 1550
     image = Image.new("RGB", (width, height), "white")
@@ -421,14 +410,16 @@ def generate_receipt(order):
     return buffer.getvalue()
 
 # =========================
-# الواجهة الرئيسية
+# الواجهة الرئيسية (بدون مصادقة)
 # =========================
 def main():
     st.title("✂️ صادق الخياط")
-    st.caption("نظام إدارة الطلبات والقياسات والحسابات")
+    st.caption("نظام إدارة الطلبات والقياسات والحسابات - نسخة مبسطة بدون كلمة مرور")
+
     overdue = get_overdue_orders()
     if not overdue.empty:
         st.warning(f"⚠️ هناك {len(overdue)} طلباً متأخراً عن موعد التسليم!")
+
     menu = st.sidebar.radio(
         "القائمة الرئيسية",
         [
@@ -450,39 +441,36 @@ def main():
         if df.empty:
             st.info("لا توجد طلبات مسجلة حتى الآن.")
             return
-        col1, col2, col3, col4, col5 = st.columns(5)
+
         total_orders = len(df)
         total_revenue = df["total_price"].fillna(0).sum()
         total_paid = df["advance_paid"].fillna(0).sum()
         total_due = df["remaining_price"].fillna(0).sum()
         completed = len(df[df["status"] == "تم التسليم"])
         completion_rate = (completed / total_orders * 100) if total_orders > 0 else 0
+
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("📦 إجمالي الطلبات", total_orders)
         col2.metric("💰 إجمالي المبيعات", f"{total_revenue:,.0f} د.ع")
         col3.metric("💵 المقبوض", f"{total_paid:,.0f} د.ع")
         col4.metric("📉 المتبقي", f"{total_due:,.0f} د.ع", delta=f"{total_due/total_revenue*100:.1f}%" if total_revenue > 0 else "0%")
         col5.metric("✅ نسبة الإنجاز", f"{completion_rate:.1f}%")
+
+        # رسوم بيانية باستخدام Streamlit Charts (بدون matplotlib)
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("توزيع الطلبات حسب الحالة")
             status_counts = get_status_counts()
             if not status_counts.empty:
-                fig, ax = plt.subplots(figsize=(6, 4))
-                colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#FF8C94']
-                ax.pie(status_counts.values, labels=status_counts.index, autopct='%1.1f%%', colors=colors[:len(status_counts)])
-                ax.set_title('حالة الطلبات')
-                st.pyplot(fig)
+                st.bar_chart(status_counts)
+
         with col2:
             st.subheader("المبيعات الشهرية")
             monthly = get_monthly_report()
             if not monthly.empty:
-                fig, ax = plt.subplots(figsize=(6, 4))
-                ax.bar(monthly['الشهر'].astype(str), monthly['إجمالي المبيعات'], color='#4ECDC4')
-                ax.set_xlabel('الشهر')
-                ax.set_ylabel('المبيعات (د.ع)')
-                ax.set_title('المبيعات الشهرية')
-                plt.xticks(rotation=45)
-                st.pyplot(fig)
+                # نرسم المبيعات الشهرية كخط أو عمود
+                st.area_chart(monthly.set_index('الشهر')['إجمالي المبيعات'])
+
         st.subheader("📋 آخر الطلبات")
         show = df.head(10)[["id", "name", "phone", "item_type", "status", "delivery_date", "remaining_price"]].copy()
         show.columns = ["رقم", "الزبون", "الهاتف", "الطلب", "الحالة", "التسليم", "المتبقي"]
@@ -492,11 +480,9 @@ def main():
     elif menu == "➕ إضافة طلب":
         st.subheader("➕ تسجيل طلب جديد")
         with st.form("new_order", clear_on_submit=True):
-            st.markdown("### 👤 معلومات الزبون")
             col1, col2 = st.columns(2)
             name = col1.text_input("اسم الزبون *", placeholder="أدخل اسم الزبون")
             phone = col2.text_input("رقم الهاتف", placeholder="أدخل رقم الهاتف")
-            st.markdown("### 📋 تفاصيل الطلب")
             col1, col2 = st.columns(2)
             item_type = col1.selectbox("نوع التفصيل", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "جاكيت", "تفصيل آخر"])
             delivery_date = col2.date_input("تاريخ التسليم المتوقع", value=date.today() + timedelta(days=7))
@@ -508,8 +494,7 @@ def main():
             sleeve = col2.number_input("طول الردان", min_value=0.0, step=0.5, format="%.1f")
             collar = col3.number_input("الياخة", min_value=0.0, step=0.5, format="%.1f")
             cuff = col3.number_input("البزمة", min_value=0.0, step=0.5, format="%.1f")
-            notes = st.text_area("📝 ملاحظات", placeholder="القماش، اللون، الموديل، تعليمات خاصة...")
-            st.markdown("### 💰 الحساب")
+            notes = st.text_area("📝 ملاحظات", placeholder="القماش، اللون، الموديل...")
             col1, col2 = st.columns(2)
             total_price = col1.number_input("السعر الكلي (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
             advance_paid = col2.number_input("المبلغ المدفوع (د.ع)", min_value=0.0, step=1000.0, format="%.0f")
@@ -664,7 +649,7 @@ def main():
             view = customers.copy()
             view.columns = ["رقم", "الاسم", "الهاتف", "تاريخ الإضافة", "آخر طلب"]
             st.dataframe(view, use_container_width=True, hide_index=True)
-            customer_id = st.selectbox("اختر زبوناً لعرض طلباته", customers["id"].tolist(),
+            customer_id = st.selectbox("اختر زبونًا لعرض طلباته", customers["id"].tolist(),
                                        format_func=lambda x: f"{customers.loc[customers['id']==x, 'name'].iloc[0]} - {customers.loc[customers['id']==x, 'phone'].iloc[0]}")
             conn = db.get_connection()
             orders = pd.read_sql_query("SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC", conn, params=(int(customer_id),))
@@ -674,7 +659,7 @@ def main():
             else:
                 st.dataframe(orders, use_container_width=True, hide_index=True)
 
-    # ---------- البحث المتقدم ----------
+    # ---------- البحث ----------
     elif menu == "🔍 البحث المتقدم":
         st.subheader("🔍 البحث المتقدم")
         search = st.text_input("ابحث بالاسم أو رقم الهاتف أو رقم الطلب")
@@ -691,7 +676,7 @@ def main():
                 st.success(f"تم العثور على {len(results)} نتيجة.")
                 st.dataframe(results, use_container_width=True, hide_index=True)
 
-    # ---------- الإحصائيات والتقارير ----------
+    # ---------- الإحصائيات ----------
     elif menu == "📊 الإحصائيات والتقارير":
         st.subheader("📊 الإحصائيات والتقارير")
         df = get_orders()
@@ -706,13 +691,7 @@ def main():
             st.subheader("الطلبات حسب الحالة")
             status_counts = get_status_counts()
             if not status_counts.empty:
-                fig, ax = plt.subplots(figsize=(8, 5))
-                status_counts.plot(kind='bar', ax=ax, color='#4ECDC4')
-                ax.set_title('عدد الطلبات حسب الحالة')
-                ax.set_xlabel('الحالة')
-                ax.set_ylabel('العدد')
-                plt.xticks(rotation=45)
-                st.pyplot(fig)
+                st.bar_chart(status_counts)
             st.subheader("التقرير الشهري")
             monthly = get_monthly_report()
             if not monthly.empty:
