@@ -1,6 +1,7 @@
 import io
 import os
 import sqlite3
+import urllib.parse
 from datetime import datetime, date
 
 import pandas as pd
@@ -35,7 +36,7 @@ st.set_page_config(
 
 
 # =========================
-# أدوات اللغة العربية
+# أدوات اللغة العربية والخطوط
 # =========================
 def rtl(text):
     if text is None:
@@ -46,6 +47,7 @@ def rtl(text):
         return str(text)
 
 
+@st.cache_resource
 def get_font(size):
     paths = [
         "assets/fonts/NotoNaskhArabic-Regular.ttf",
@@ -84,58 +86,54 @@ def ensure_column(conn, table, column, definition):
 
 
 def init_db():
-    conn = get_connection()
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                created_at TEXT
+            )
+        """)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS customers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone TEXT,
-            created_at TEXT
-        )
-    """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id INTEGER,
+                name TEXT NOT NULL,
+                phone TEXT,
+                item_type TEXT,
+                length REAL DEFAULT 0,
+                width REAL DEFAULT 0,
+                shoulder REAL DEFAULT 0,
+                sleeve REAL DEFAULT 0,
+                collar REAL DEFAULT 0,
+                cuff REAL DEFAULT 0,
+                notes TEXT,
+                total_price REAL DEFAULT 0,
+                advance_paid REAL DEFAULT 0,
+                remaining_price REAL DEFAULT 0,
+                status TEXT DEFAULT 'قيد الانتظار',
+                created_at TEXT,
+                delivery_date TEXT
+            )
+        """)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER,
-            name TEXT NOT NULL,
-            phone TEXT,
-            item_type TEXT,
-            length REAL DEFAULT 0,
-            width REAL DEFAULT 0,
-            shoulder REAL DEFAULT 0,
-            sleeve REAL DEFAULT 0,
-            collar REAL DEFAULT 0,
-            cuff REAL DEFAULT 0,
-            notes TEXT,
-            total_price REAL DEFAULT 0,
-            advance_paid REAL DEFAULT 0,
-            remaining_price REAL DEFAULT 0,
-            status TEXT DEFAULT 'قيد الانتظار',
-            created_at TEXT,
-            delivery_date TEXT
-        )
-    """)
+        ensure_column(conn, "orders", "customer_id", "INTEGER")
+        ensure_column(conn, "orders", "delivery_date", "TEXT")
 
-    # دعم قواعد البيانات القديمة
-    ensure_column(conn, "orders", "customer_id", "INTEGER")
-    ensure_column(conn, "orders", "delivery_date", "TEXT")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER,
+                amount REAL NOT NULL,
+                payment_date TEXT,
+                notes TEXT
+            )
+        """)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER,
-            amount REAL NOT NULL,
-            payment_date TEXT,
-            notes TEXT
-        )
-    """)
-
-    ensure_column(conn, "payments", "notes", "TEXT")
-
-    conn.commit()
-    conn.close()
+        ensure_column(conn, "payments", "notes", "TEXT")
+        conn.commit()
 
 
 init_db()
@@ -145,38 +143,35 @@ init_db()
 # دوال البيانات
 # =========================
 def get_or_create_customer(name, phone):
-    conn = get_connection()
     phone = (phone or "").strip()
     name = name.strip()
 
-    customer = None
-    if phone:
-        customer = conn.execute(
-            "SELECT * FROM customers WHERE phone = ? ORDER BY id DESC LIMIT 1",
-            (phone,)
-        ).fetchone()
+    with get_connection() as conn:
+        customer = None
+        if phone:
+            customer = conn.execute(
+                "SELECT * FROM customers WHERE phone = ? ORDER BY id DESC LIMIT 1",
+                (phone,)
+            ).fetchone()
 
-    if customer is None:
-        customer = conn.execute(
-            "SELECT * FROM customers WHERE name = ? ORDER BY id DESC LIMIT 1",
-            (name,)
-        ).fetchone()
+        if customer is None:
+            customer = conn.execute(
+                "SELECT * FROM customers WHERE name = ? ORDER BY id DESC LIMIT 1",
+                (name,)
+            ).fetchone()
 
-    if customer:
-        customer_id = customer["id"]
-        conn.execute(
-            "UPDATE customers SET name = ?, phone = ? WHERE id = ?",
-            (name, phone, customer_id)
-        )
-    else:
-        customer_id = conn.execute(
-            "INSERT INTO customers (name, phone, created_at) VALUES (?, ?, ?)",
-            (name, phone, datetime.now().strftime("%Y-%m-%d %H:%M"))
-        ).lastrowid
+        if customer:
+            customer_id = customer["id"]
+            if phone and not customer["phone"]:
+                conn.execute("UPDATE customers SET phone = ? WHERE id = ?", (phone, customer_id))
+        else:
+            customer_id = conn.execute(
+                "INSERT INTO customers (name, phone, created_at) VALUES (?, ?, ?)",
+                (name, phone, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            ).lastrowid
 
-    conn.commit()
-    conn.close()
-    return customer_id
+        conn.commit()
+        return customer_id
 
 
 def create_order(data):
@@ -184,72 +179,94 @@ def create_order(data):
     remaining = max(0.0, data["total_price"] - data["advance_paid"])
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    conn = get_connection()
-    order_id = conn.execute("""
-        INSERT INTO orders (
-            customer_id, name, phone, item_type,
-            length, width, shoulder, sleeve, collar, cuff,
-            notes, total_price, advance_paid, remaining_price,
-            status, created_at, delivery_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        customer_id,
-        data["name"].strip(),
-        (data["phone"] or "").strip(),
-        data["item_type"],
-        data["length"],
-        data["width"],
-        data["shoulder"],
-        data["sleeve"],
-        data["collar"],
-        data["cuff"],
-        data["notes"],
-        data["total_price"],
-        data["advance_paid"],
-        remaining,
-        "قيد الانتظار",
-        now,
-        str(data["delivery_date"]),
-    )).lastrowid
+    with get_connection() as conn:
+        order_id = conn.execute("""
+            INSERT INTO orders (
+                customer_id, name, phone, item_type,
+                length, width, shoulder, sleeve, collar, cuff,
+                notes, total_price, advance_paid, remaining_price,
+                status, created_at, delivery_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            customer_id,
+            data["name"].strip(),
+            (data["phone"] or "").strip(),
+            data["item_type"],
+            data["length"],
+            data["width"],
+            data["shoulder"],
+            data["sleeve"],
+            data["collar"],
+            data["cuff"],
+            data["notes"],
+            data["total_price"],
+            data["advance_paid"],
+            remaining,
+            "قيد الانتظار",
+            now,
+            str(data["delivery_date"]),
+        )).lastrowid
 
-    if data["advance_paid"] > 0:
-        conn.execute(
-            "INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
-            (order_id, data["advance_paid"], now, "عربون عند تسجيل الطلب")
-        )
+        if data["advance_paid"] > 0:
+            conn.execute(
+                "INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
+                (order_id, data["advance_paid"], now, "عربون عند تسجيل الطلب")
+            )
+        conn.commit()
+        return order_id, remaining
 
-    conn.commit()
-    conn.close()
-    return order_id, remaining
+
+def update_order(order_id, data):
+    remaining = max(0.0, data["total_price"] - data["advance_paid"])
+    with get_connection() as conn:
+        conn.execute("""
+            UPDATE orders SET
+                name = ?, phone = ?, item_type = ?,
+                length = ?, width = ?, shoulder = ?, sleeve = ?, collar = ?, cuff = ?,
+                notes = ?, total_price = ?, advance_paid = ?, remaining_price = ?,
+                delivery_date = ?
+            WHERE id = ?
+        """, (
+            data["name"].strip(),
+            (data["phone"] or "").strip(),
+            data["item_type"],
+            data["length"],
+            data["width"],
+            data["shoulder"],
+            data["sleeve"],
+            data["collar"],
+            data["cuff"],
+            data["notes"],
+            data["total_price"],
+            data["advance_paid"],
+            remaining,
+            str(data["delivery_date"]),
+            order_id
+        ))
+        conn.commit()
 
 
 def get_orders():
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
-    conn.close()
-    return df
+    with get_connection() as conn:
+        return pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
 
 
 def get_order(order_id):
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-    conn.close()
-    return row
+    with get_connection() as conn:
+        return conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
 
 
 def update_status(order_id, status):
-    conn = get_connection()
-    conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+        conn.commit()
 
 
 def delete_order(order_id):
-    conn = get_connection()
-    conn.execute("DELETE FROM payments WHERE order_id = ?", (order_id,))
-    conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute("DELETE FROM payments WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+        conn.commit()
 
 
 def add_payment(order_id, amount, notes):
@@ -270,28 +287,35 @@ def add_payment(order_id, amount, notes):
     new_remaining = max(0.0, float(order["total_price"] or 0) - new_paid)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    conn = get_connection()
-    conn.execute(
-        "UPDATE orders SET advance_paid = ?, remaining_price = ? WHERE id = ?",
-        (new_paid, new_remaining, order_id)
-    )
-    conn.execute(
-        "INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
-        (order_id, amount, now, notes or "دفعة جديدة")
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE orders SET advance_paid = ?, remaining_price = ? WHERE id = ?",
+            (new_paid, new_remaining, order_id)
+        )
+        conn.execute(
+            "INSERT INTO payments (order_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
+            (order_id, amount, now, notes or "دفعة جديدة")
+        )
+        conn.commit()
     return True, "تم تسجيل الدفعة بنجاح."
 
 
 def get_payments(order_id):
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC",
-        (order_id,)
-    ).fetchall()
-    conn.close()
-    return rows
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC",
+            (order_id,)
+        ).fetchall()
+
+
+def get_whatsapp_link(phone, message):
+    if not phone:
+        return None
+    clean_phone = "".join(filter(str.isdigit, str(phone)))
+    if clean_phone.startswith("0"):
+        clean_phone = "964" + clean_phone[1:]
+    encoded_message = urllib.parse.quote(message)
+    return f"https://wa.me/{clean_phone}?text={encoded_message}"
 
 
 # =========================
@@ -376,7 +400,6 @@ def generate_receipt(order):
     y += 60
 
     notes = order["notes"] or "لا توجد ملاحظات"
-    # قص الملاحظات الطويلة إلى عدة أسطر
     words = str(notes).split()
     lines, current = [], ""
     for word in words:
@@ -519,6 +542,17 @@ elif menu == "📋 إدارة الطلبات":
     if df.empty:
         st.info("لا توجد طلبات.")
     else:
+        # زر تصدير البيانات إلى Excel
+        buffer_excel = io.BytesIO()
+        with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Orders")
+        st.download_button(
+            "📊 تصدير جميع الطلبات إلى Excel",
+            data=buffer_excel.getvalue(),
+            file_name="tailor_orders.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
         selected_statuses = st.multiselect("فلترة حسب الحالة", STATUSES)
         if selected_statuses:
             df = df[df["status"].isin(selected_statuses)]
@@ -540,12 +574,9 @@ elif menu == "📋 إدارة الطلبات":
 
                 with b:
                     st.write("**القياسات**")
-                    st.write(f"الطول: {row['length']}")
-                    st.write(f"العرض: {row['width']}")
-                    st.write(f"الكتاف: {row['shoulder']}")
-                    st.write(f"الردان: {row['sleeve']}")
-                    st.write(f"الياخة: {row['collar']}")
-                    st.write(f"البزمة: {row['cuff']}")
+                    st.write(f"الطول: {row['length']} | العرض: {row['width']}")
+                    st.write(f"الكتاف: {row['shoulder']} | الردان: {row['sleeve']}")
+                    st.write(f"الياخة: {row['collar']} | البزمة: {row['cuff']}")
 
                 with c:
                     st.write(f"**السعر:** {float(row['total_price'] or 0):,.0f} د.ع")
@@ -586,6 +617,60 @@ elif menu == "📋 إدارة الطلبات":
                     delete_order(order_id)
                     st.success("تم حذف الطلب.")
                     st.rerun()
+
+                # زر الواتساب لإرسال إشعار للزبون
+                if row["phone"]:
+                    wa_msg = f"أهلاً بك عزيزي {row['name']}، نود إعلامك أن طلبك ({row['item_type']}) لدى {SHOP_NAME} حالته الآن: {new_status}."
+                    wa_url = get_whatsapp_link(row["phone"], wa_msg)
+                    if wa_url:
+                        st.markdown(f"[💬 إرسال إشعار WhatsApp للزبون]({wa_url})", unsafe_allow_html=True)
+
+                # قسم تعديل القياسات والبيانات
+                with st.popover("✏️ تعديل بيانات الطلب والقياسات"):
+                    with st.form(f"edit_form_{order_id}"):
+                        e_name = st.text_input("اسم الزبون", value=row["name"])
+                        e_phone = st.text_input("رقم الهاتف", value=row["phone"] or "")
+                        e_item = st.selectbox("نوع التفصيل", ["دشداشة", "قميص", "بنطلون", "بدلة كاملة", "عباءة", "تفصيل آخر"], index=0)
+                        
+                        try:
+                            d_val = datetime.strptime(row["delivery_date"], "%Y-%m-%d").date() if row["delivery_date"] else date.today()
+                        except ValueError:
+                            d_val = date.today()
+                        
+                        e_deliv = st.date_input("تاريخ التسليم", value=d_val)
+                        
+                        ca, cb, cc = st.columns(3)
+                        e_len = ca.number_input("الطول", value=float(row["length"] or 0))
+                        e_wid = ca.number_input("العرض", value=float(row["width"] or 0))
+                        e_sh = cb.number_input("الكتاف", value=float(row["shoulder"] or 0))
+                        e_sl = cb.number_input("الردان", value=float(row["sleeve"] or 0))
+                        e_col = cc.number_input("الياخة", value=float(row["collar"] or 0))
+                        e_cuff = cc.number_input("البزمة", value=float(row["cuff"] or 0))
+
+                        e_notes = st.text_area("ملاحظات", value=row["notes"] or "")
+                        
+                        cp1, cp2 = st.columns(2)
+                        e_total = cp1.number_input("السعر الكلي", value=float(row["total_price"] or 0))
+                        e_adv = cp2.number_input("المدفوع", value=float(row["advance_paid"] or 0))
+
+                        if st.form_submit_button("💾 حفظ التعديلات"):
+                            update_order(order_id, {
+                                "name": e_name,
+                                "phone": e_phone,
+                                "item_type": e_item,
+                                "length": e_len,
+                                "width": e_wid,
+                                "shoulder": e_sh,
+                                "sleeve": e_sl,
+                                "collar": e_col,
+                                "cuff": e_cuff,
+                                "notes": e_notes,
+                                "total_price": e_total,
+                                "advance_paid": e_adv,
+                                "delivery_date": e_deliv
+                            })
+                            st.success("تمت تحديث البيانات بنجاح.")
+                            st.rerun()
 
                 payments = get_payments(order_id)
                 if payments:
@@ -642,12 +727,11 @@ elif menu == "💵 الدفعات والديون":
 # الزبائن
 elif menu == "👥 الزبائن":
     st.subheader("قاعدة بيانات الزبائن")
-    conn = get_connection()
-    customers = pd.read_sql_query(
-        "SELECT id, name, phone, created_at FROM customers ORDER BY id DESC",
-        conn
-    )
-    conn.close()
+    with get_connection() as conn:
+        customers = pd.read_sql_query(
+            "SELECT id, name, phone, created_at FROM customers ORDER BY id DESC",
+            conn
+        )
 
     if customers.empty:
         st.info("لا توجد بيانات زبائن.")
@@ -665,13 +749,12 @@ elif menu == "👥 الزبائن":
             ),
         )
 
-        conn = get_connection()
-        orders = pd.read_sql_query(
-            "SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC",
-            conn,
-            params=(int(customer_id),),
-        )
-        conn.close()
+        with get_connection() as conn:
+            orders = pd.read_sql_query(
+                "SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC",
+                conn,
+                params=(int(customer_id),),
+            )
 
         if orders.empty:
             st.info("لا توجد طلبات لهذا الزبون.")
@@ -685,19 +768,18 @@ elif menu == "🔍 البحث":
     search = st.text_input("ابحث بالاسم أو رقم الهاتف أو رقم الطلب")
 
     if search.strip():
-        conn = get_connection()
-        results = pd.read_sql_query(
-            """
-            SELECT * FROM orders
-            WHERE name LIKE ?
-               OR phone LIKE ?
-               OR CAST(id AS TEXT) LIKE ?
-            ORDER BY id DESC
-            """,
-            conn,
-            params=(f"%{search}%", f"%{search}%", f"%{search}%"),
-        )
-        conn.close()
+        with get_connection() as conn:
+            results = pd.read_sql_query(
+                """
+                SELECT * FROM orders
+                WHERE name LIKE ?
+                   OR phone LIKE ?
+                   OR CAST(id AS TEXT) LIKE ?
+                ORDER BY id DESC
+                """,
+                conn,
+                params=(f"%{search}%", f"%{search}%", f"%{search}%"),
+            )
 
         if results.empty:
             st.warning("لم يتم العثور على نتائج.")
