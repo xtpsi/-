@@ -15,14 +15,12 @@ from bidi.algorithm import get_display
 # إعدادات المحل
 # =========================
 DB_NAME = "tailor_master.db"
-SHOP_NAME = "صادق البزاز"
+SHOP_NAME = "صادق الخياط"
 SHOP_PHONE = "07713146637"
 
 STATUSES = [
     "قيد الانتظار",
-    "جارٍ القص",
     "جارٍ التفصيل",
-    "جارٍ الكي",
     "جاهز للاستلام",
     "تم التسليم",
     "ملغي",
